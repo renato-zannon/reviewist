@@ -1,0 +1,16 @@
+[package]
+name = "reviewist"
+version = "0.1.0"
+authors = ["Renato Zannon <renato@rrsz.com.br>"]
+
+[dependencies]
+dotenv = "0.11"
+failure = "0.1"
+failure_derive = "0.1"
+futures = "0.1"
+reqwest = "0.8"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+tokio-core = "0.1"
+url = "1.7"
