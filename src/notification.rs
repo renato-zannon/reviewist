@@ -2,31 +2,37 @@ use failure::Error;
 
 #[derive(Debug, Deserialize)]
 pub struct Notification {
-    reason: String,
-    url: String,
-    subject: Subject,
-    repository: Repository,
+    pub reason: String,
+    pub url: String,
+    pub subject: Subject,
+    pub repository: Repository,
 }
 
 #[derive(Debug, Deserialize)]
-struct Subject {
+pub struct Subject {
     #[serde(rename = "type")]
-    _type: String,
-    title: String,
-    url: String,
+    pub _type: String,
+    pub title: String,
+    pub url: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct Repository {
-    name: String,
+pub struct Repository {
+    pub name: String,
 }
 
 #[derive(Debug)]
 pub struct ReviewRequest {
-    pr_title: String,
-    pr_number: String,
-    repository: String,
-    url: String,
+    pub pr_title: String,
+    pub repository: String,
+    pub url: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PullRequest {
+    pub number: i64,
+    pub title: String,
+    pub html_url: String,
 }
 
 impl ReviewRequest {
@@ -37,7 +43,6 @@ impl ReviewRequest {
 
         Some(ReviewRequest {
             pr_title: n.subject.title,
-            pr_number: "lol123".to_owned(),
             repository: n.repository.name,
             url: n.subject.url,
         })

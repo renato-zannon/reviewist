@@ -6,15 +6,19 @@ extern crate reqwest;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate serde;
+extern crate tokio_core;
+extern crate futures;
 
 mod notification;
+mod github_client;
 
-use std::env;
 use dotenv::dotenv;
 use failure::Error;
-use reqwest::header;
 
 use notification::{Notification, ReviewRequest};
+use tokio_core::reactor;
+use futures::prelude::*;
+use futures::future;
 
 fn main() {
     let err = match run() {
@@ -31,19 +35,14 @@ fn main() {
 
 fn run() -> Result<(), Error> {
     dotenv().map_err(|err| format_err!(".env error: {:?}", err))?;
-    let github_token = env::var("GITHUB_TOKEN")?;
 
-    let client = reqwest::Client::new();
-    let mut response = client.get("https://api.github.com/notifications")
-        .header(header::Authorization(format!("token {}", github_token)))
-        .send()?;
+    let mut core = reactor::Core::new()?;
+    let client = github_client::GithubClient::new(&core.handle())?;
 
-    let notifications: Vec<Notification> = response.json()?;
-    let reviews = notifications.into_iter().filter_map(ReviewRequest::from_notification);
+    let reviews = client.pull_requests_to_review().for_each(|pull_request| {
+        println!("- {:?}", pull_request);
+        future::ok(())
+    });
 
-    for review in reviews {
-        println!("- {:?}", review);
-    }
-
-    Ok(())
+    core.run(reviews)
 }
