@@ -1,6 +1,6 @@
 use std::env;
 use reqwest::header::{self, Authorization, Headers};
-use reqwest::unstable::async::Client;
+use reqwest::unstable::async::{Client, Response};
 use failure::Error;
 use tokio_core::reactor::Handle;
 use notification::{Notification, ReviewRequest, PullRequest};
@@ -26,51 +26,26 @@ impl GithubClient {
         &self.http
     }
 
-    pub fn current_review_requests(&self) -> impl Stream<Item = ReviewRequest, Error = Error> {
-        self.http.get("https://api.github.com/notifications").send().and_then(|mut response| {
-            response.json::<Vec<Notification>>()
-        }).map(|notifications| {
-            let requests = notifications.into_iter().filter_map(ReviewRequest::from_notification);
-            stream::iter_ok(requests)
-        }).flatten_stream().map_err(Error::from)
+    pub fn current_review_requests<'a>(&'a self) -> impl Stream<Item = ReviewRequest, Error = Error> + 'a {
+        self.get_all_notifications().filter_map(ReviewRequest::from_notification)
     }
 
     fn get_all_notifications<'a>(&'a self) -> impl Stream<Item = Notification, Error = Error> + 'a {
         let url = Some("https://api.github.com/notifications".to_owned());
 
-        fn make_request<'b>(http: &'b Client) -> impl Future<Item = (Vec<Notification>, Option<String>), Error = Error> + 'b {
-            use reqwest::header::RelationType;
+        stream::unfold(url, move |maybe_url| {
+            maybe_url.map(|page_url| self.get_notifications_page(page_url))
+        }).map(stream::iter_ok).flatten()
+    }
 
-            http.get(&page_url).send().and_then(|mut response| {
-                let link_header: Option<&header::Link> = response.headers().get();
-                let next_url: Option<String> = link_header.and_then(|header| {
-                    for value in header.values() {
-                        let includes = value.rel().map(|rels| rels.contains(&RelationType::Next));
+    fn get_notifications_page<'b>(&'b self, page_url: String) -> impl Future<Item = (Vec<Notification>, Option<String>), Error = Error> + 'b {
+        self.http.get(&page_url).send().and_then(|mut response| {
+            let next_url = next_page_url(&response);
 
-                        match includes {
-                            Some(true) => return Some(value.link().to_owned()),
-                            _ => continue,
-                        }
-                    }
-
-                    return None;
-                });
-
-                response.json::<Vec<Notification>>().map(|notifications| {
-                    return (notifications, next_url);
-                })
-            }).map_err(Error::from)
-        }
-
-        stream::unfold(url, |maybe_url| {
-            let page_url = match maybe_url {
-                Some(url) => url,
-                None => return None,
-            };
-
-            let response = make_request(&self.http);
-            return Some(response);
-        }).and_then(stream::iter_ok)
+            response.json::<Vec<Notification>>().map(|notifications| {
+                return (notifications, next_url);
+            })
+        }).map_err(Error::from)
     }
 
     pub fn pull_requests_to_review<'a>(&'a self) -> impl Stream<Item = PullRequest, Error = Error> + 'a {
@@ -92,4 +67,19 @@ fn default_headers(github_token: String) -> Headers {
     headers.set(auth_header);
 
     headers
+}
+
+fn next_page_url(response: &Response) -> Option<String> {
+    use reqwest::header::RelationType;
+
+    let link_header: &header::Link = response.headers().get()?;
+
+    let value = link_header.values().iter().find(|value| {
+        match value.rel() {
+            Some(rels) => rels.contains(&RelationType::Next),
+            None => false,
+        }
+    });
+
+    Some(value?.link().to_owned())
 }
