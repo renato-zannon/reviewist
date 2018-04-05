@@ -7,6 +7,7 @@ use notification::{Notification, ReviewRequest, PullRequest};
 use futures::prelude::*;
 use futures::{future, stream};
 use futures::future::Either;
+use serde_json::{self, Value};
 
 pub struct GithubClient {
     http: Client,
@@ -42,7 +43,18 @@ impl GithubClient {
         self.http.get(&page_url).send().and_then(|mut response| {
             let next_url = next_page_url(&response);
 
-            response.json::<Vec<Notification>>().map(|notifications| {
+            response.json::<Vec<Value>>().map(|objects| {
+                let notifications = objects.into_iter().filter_map(|object| {
+                    match serde_json::from_value(object) {
+                        Ok(notification) => Some(notification),
+
+                        Err(err) => {
+                            eprintln!("Problem parsing notification: {:?}", err);
+                            return None;
+                        },
+                    }
+                }).collect();
+
                 return (notifications, next_url);
             })
         }).map_err(Error::from)
@@ -50,8 +62,14 @@ impl GithubClient {
 
     pub fn pull_requests_to_review<'a>(&'a self) -> impl Stream<Item = PullRequest, Error = Error> + 'a {
         self.current_review_requests()
-            .map(move |review_request| self.get_pr_for_review_request(review_request))
+            .map(move |review_request| {
+                self.get_pr_for_review_request(review_request).map(Some).or_else(|err| {
+                    eprintln!("Problem getting pull request: {:?}", err);
+                    return future::ok(None);
+                })
+            })
             .buffer_unordered(10)
+            .filter_map(|pr| pr)
     }
 
     fn get_pr_for_review_request(&self, review_request: ReviewRequest) -> impl Future<Item = PullRequest, Error = Error> {
