@@ -7,7 +7,10 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate serde;
 extern crate tokio_core;
+extern crate tokio_timer;
 extern crate futures;
+#[macro_use]
+extern crate hyper;
 
 mod notification;
 mod github_client;

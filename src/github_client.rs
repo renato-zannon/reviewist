@@ -1,4 +1,6 @@
 use std::env;
+use std::time::{Duration, SystemTime};
+use std::cell::Cell;
 use reqwest::header::{self, Authorization, Headers};
 use reqwest::unstable::async::{Client, Response};
 use failure::Error;
@@ -11,6 +13,66 @@ use serde_json::{self, Value};
 
 pub struct GithubClient {
     http: Client,
+    notifications_last_modified: Cell<header::HttpDate>,
+}
+
+struct NotificationsResponse {
+    notifications: Vec<Notification>,
+    next_page: Option<String>,
+    last_modified: header::HttpDate,
+    poll_interval: Option<i64>,
+}
+
+header! { (XPollInterval, "X-Poll-Interval") => [i64] }
+
+impl NotificationsResponse {
+    fn from_response(response: Response) -> impl Future<Item = NotificationsResponse, Error = Error> {
+        let last_modified = response.headers().get::<header::LastModified>().map(|header| header.0);
+        let last_modified = match last_modified {
+            Some(date) => date,
+            None => return Either::A(future::err(format_err!("Response didn't contain Last-Modified header"))),
+        };
+
+        let poll_interval = response.headers().get::<XPollInterval>().cloned().map(|int| int.0);
+        let next_page = next_page_url(&response);
+
+        let result = response.json::<Vec<Value>>().map(|objects| {
+            let notifications = objects.into_iter().filter_map(|object| {
+                match serde_json::from_value(object) {
+                    Ok(notification) => Some(notification),
+
+                    Err(err) => {
+                        eprintln!("Problem parsing notification: {:?}", err);
+                        return None;
+                    },
+                }
+            }).collect();
+
+            NotificationsResponse {
+                notifications,
+                next_page,
+                last_modified,
+                poll_interval
+            }
+        }).map_err(Error::from);
+
+        Either::B(result)
+    }
+}
+
+fn next_page_url(response: &Response) -> Option<String> {
+    use reqwest::header::RelationType;
+
+    let link_header: &header::Link = response.headers().get()?;
+
+    let value = link_header.values().iter().find(|value| {
+        match value.rel() {
+            Some(rels) => rels.contains(&RelationType::Next),
+            None => false,
+        }
+    });
+
+    Some(value?.link().to_owned())
 }
 
 impl GithubClient {
@@ -20,7 +82,13 @@ impl GithubClient {
             .default_headers(default_headers(github_token))
             .build(handle)?;
 
-        Ok(GithubClient { http: client })
+        let base_time = SystemTime::now() - Duration::from_secs(60 * 60 * 48);
+        let base_time = header::HttpDate::from(base_time);
+
+        Ok(GithubClient {
+            http: client,
+            notifications_last_modified: Cell::new(base_time),
+        })
     }
 
     pub fn http_client(&self) -> &Client {
@@ -40,7 +108,15 @@ impl GithubClient {
     }
 
     fn get_notifications_page<'b>(&'b self, page_url: String) -> impl Future<Item = (Vec<Notification>, Option<String>), Error = Error> + 'b {
-        self.http.get(&page_url).send().and_then(|mut response| {
+        let last_modified = self.notifications_last_modified.get();
+        let if_modified_since = header::IfModifiedSince(last_modified);
+
+        let request = self.http
+            .get(&page_url)
+            .header(if_modified_since)
+            .send();
+
+        request.and_then(|mut response| {
             let next_url = next_page_url(&response);
 
             response.json::<Vec<Value>>().map(|objects| {
@@ -85,19 +161,4 @@ fn default_headers(github_token: String) -> Headers {
     headers.set(auth_header);
 
     headers
-}
-
-fn next_page_url(response: &Response) -> Option<String> {
-    use reqwest::header::RelationType;
-
-    let link_header: &header::Link = response.headers().get()?;
-
-    let value = link_header.values().iter().find(|value| {
-        match value.rel() {
-            Some(rels) => rels.contains(&RelationType::Next),
-            None => false,
-        }
-    });
-
-    Some(value?.link().to_owned())
 }
