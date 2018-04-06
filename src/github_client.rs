@@ -26,7 +26,7 @@ struct NotificationsResponse {
 header! { (XPollInterval, "X-Poll-Interval") => [i64] }
 
 impl NotificationsResponse {
-    fn from_response(response: Response) -> impl Future<Item = NotificationsResponse, Error = Error> {
+    fn from_response(mut response: Response) -> impl Future<Item = NotificationsResponse, Error = Error> {
         let last_modified = response.headers().get::<header::LastModified>().map(|header| header.0);
         let last_modified = match last_modified {
             Some(date) => date,
@@ -36,7 +36,7 @@ impl NotificationsResponse {
         let poll_interval = response.headers().get::<XPollInterval>().cloned().map(|int| int.0);
         let next_page = next_page_url(&response);
 
-        let result = response.json::<Vec<Value>>().map(|objects| {
+        let result = response.json::<Vec<Value>>().map(move |objects| {
             let notifications = objects.into_iter().filter_map(|object| {
                 match serde_json::from_value(object) {
                     Ok(notification) => Some(notification),
