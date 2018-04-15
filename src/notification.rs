@@ -1,5 +1,3 @@
-use failure::Error;
-
 #[derive(Debug, Deserialize)]
 pub struct Notification {
     pub reason: String,

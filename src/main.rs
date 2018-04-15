@@ -1,24 +1,24 @@
 extern crate dotenv;
 #[macro_use]
 extern crate failure;
-extern crate reqwest;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-extern crate serde;
-extern crate tokio_core;
-extern crate tokio_timer;
 extern crate futures;
 #[macro_use]
 extern crate hyper;
+extern crate reqwest;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
+extern crate tokio_core;
+extern crate tokio_timer;
 
-mod notification;
 mod github_client;
+mod notification;
+mod notifications_response;
 
 use dotenv::dotenv;
 use failure::Error;
 
-use notification::{Notification, ReviewRequest};
 use tokio_core::reactor;
 use futures::prelude::*;
 use futures::future;
