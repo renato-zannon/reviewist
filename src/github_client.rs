@@ -88,6 +88,8 @@ impl GithubClient {
             None => return Either::A(future::ok(())),
         };
 
+        self.last_poll_interval.set(None);
+
         eprintln!("Will wait {}s", interval);
         let interval_end = Instant::now() + Duration::from_secs(interval);
         let delay = Delay::new(interval_end).map_err(Error::from);

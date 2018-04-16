@@ -12,6 +12,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate tokio_core;
+extern crate tokio_retry;
 extern crate tokio_timer;
 
 mod github_client;
@@ -22,6 +23,7 @@ use dotenv::dotenv;
 use failure::Error;
 
 use tokio_core::reactor;
+use tokio_retry::{Retry, strategy::ExponentialBackoff};
 use futures::prelude::*;
 use futures::future;
 
@@ -49,17 +51,28 @@ fn run() -> Result<(), Error> {
 
     let future = {
         future::loop_fn(client, |client| {
-            let (next_client, current_batch) = client.poll_review_requests();
+            let get_batch = move || {
+                let (next_client, current_batch) = client.poll_review_requests();
 
-            let get_batch = client.wait_poll_interval().and_then(move |_| {
-                current_batch.for_each(|pull_request| {
-                    println!("- {:?}", pull_request);
-                    future::ok(())
-                })
+                client.wait_poll_interval().and_then(move |_| {
+                    current_batch.inspect_err(|err| {
+                        eprintln!("Error: {}", err);
+                    }).for_each(|pull_request| {
+                        println!("- {:?}", pull_request);
+                        future::ok(())
+                    })
+                }).and_then(move |_| next_client)
+            };
+
+            let retry_strategy = ExponentialBackoff::from_millis(10).take(5);
+            let future = Retry::spawn(retry_strategy, get_batch).map_err(|err| {
+                match err {
+                    tokio_retry::Error::OperationError(e) => e,
+                    tokio_retry::Error::TimerError(e) => Error::from(e)
+                }
             });
 
-            get_batch
-                .and_then(move |_| next_client)
+            future
                 .and_then(move |client| future::ok(future::Loop::Continue(client)))
         })
     };
