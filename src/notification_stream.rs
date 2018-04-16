@@ -28,14 +28,19 @@ impl NotificationsResponse {
             StatusCode::NotModified => {
                 eprintln!("Got 304");
                 Either::B(future::ok(not_modified_response(response)))
-            },
+            }
 
-            _ => Either::B(future::err(format_err!("Unrecognized response: {:?}", response))),
+            _ => Either::B(future::err(format_err!(
+                "Unrecognized response: {:?}",
+                response
+            ))),
         }
     }
 }
 
-fn parse_response(mut response: Response) -> impl Future<Item = NotificationsResponse, Error = Error> {
+fn parse_response(
+    mut response: Response,
+) -> impl Future<Item = NotificationsResponse, Error = Error> {
     let next_page = next_page_url(&response);
     let last_modified = parse_last_modified(&response);
     let poll_interval = parse_poll_interval(&response);
@@ -115,17 +120,20 @@ impl NotificationStream {
         let stream = stream::unfold(url, move |maybe_url| {
             let url = maybe_url?;
 
-            let result = get_notifications_page(client.clone(), last_modified, url).map(move |response| {
-                let next_page = response.next_page.clone();
-                (response, next_page)
-            });
+            let result =
+                get_notifications_page(client.clone(), last_modified, url).map(move |response| {
+                    let next_page = response.next_page.clone();
+                    (response, next_page)
+                });
 
             // TODO: Remove boxing once https://github.com/rust-lang/rust/issues/49685 is solved
             let result: Box<Future<Item = _, Error = _>> = Box::new(result);
             Some(result)
         });
 
-        NotificationStream { inner: Box::new(stream) }
+        NotificationStream {
+            inner: Box::new(stream),
+        }
     }
 }
 
@@ -138,10 +146,16 @@ impl Stream for NotificationStream {
     }
 }
 
-fn get_notifications_page(client: reqwestClient, last_modified: header::HttpDate, page_url: String) -> impl Future<Item = NotificationsResponse, Error = Error> {
+fn get_notifications_page(
+    client: reqwestClient,
+    last_modified: header::HttpDate,
+    page_url: String,
+) -> impl Future<Item = NotificationsResponse, Error = Error> {
     eprintln!("Fetching {} with IMS {}", page_url, last_modified);
     let if_modified_since = header::IfModifiedSince(last_modified);
 
     let request = client.get(&page_url).header(if_modified_since).send();
-    request.map_err(Error::from).and_then(NotificationsResponse::from_response)
+    request
+        .map_err(Error::from)
+        .and_then(NotificationsResponse::from_response)
 }

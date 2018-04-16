@@ -1,9 +1,11 @@
 extern crate dotenv;
+extern crate env_logger;
 #[macro_use]
 extern crate failure;
 extern crate futures;
 #[macro_use]
 extern crate hyper;
+extern crate openssl_probe;
 extern crate reqwest;
 extern crate serde;
 #[macro_use]
@@ -11,8 +13,6 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate tokio_core;
 extern crate tokio_timer;
-extern crate env_logger;
-extern crate openssl_probe;
 
 mod github_client;
 mod notification;
@@ -42,7 +42,7 @@ fn main() {
 }
 
 fn run() -> Result<(), Error> {
-    dotenv().map_err(|err| format_err!(".env error: {:?}", err))?;
+    dotenv().ok();
 
     let mut core = reactor::Core::new()?;
     let client = github_client::GithubClient::new(&core.handle())?;
@@ -51,14 +51,12 @@ fn run() -> Result<(), Error> {
         future::loop_fn(client, |client| {
             let (next_client, current_batch) = client.poll_review_requests();
 
-            let get_batch = client
-                .wait_poll_interval()
-                .and_then(move |_| {
-                    current_batch.for_each(|pull_request| {
-                        println!("- {:?}", pull_request);
-                        future::ok(())
-                    })
-                });
+            let get_batch = client.wait_poll_interval().and_then(move |_| {
+                current_batch.for_each(|pull_request| {
+                    println!("- {:?}", pull_request);
+                    future::ok(())
+                })
+            });
 
             get_batch
                 .and_then(move |_| next_client)
