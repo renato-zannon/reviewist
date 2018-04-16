@@ -11,10 +11,12 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate tokio_core;
 extern crate tokio_timer;
+extern crate env_logger;
+extern crate openssl_probe;
 
 mod github_client;
 mod notification;
-mod notifications_response;
+mod notification_stream;
 
 use dotenv::dotenv;
 use failure::Error;
@@ -24,6 +26,9 @@ use futures::prelude::*;
 use futures::future;
 
 fn main() {
+    env_logger::init();
+    openssl_probe::init_ssl_cert_env_vars();
+
     let err = match run() {
         Ok(_) => return,
         Err(err) => err,
@@ -42,10 +47,24 @@ fn run() -> Result<(), Error> {
     let mut core = reactor::Core::new()?;
     let client = github_client::GithubClient::new(&core.handle())?;
 
-    let reviews = client.pull_requests_to_review().for_each(|pull_request| {
-        println!("- {:?}", pull_request);
-        future::ok(())
-    });
+    let future = {
+        future::loop_fn(client, |client| {
+            let (next_client, current_batch) = client.poll_review_requests();
 
-    core.run(reviews)
+            let get_batch = client
+                .wait_poll_interval()
+                .and_then(move |_| {
+                    current_batch.for_each(|pull_request| {
+                        println!("- {:?}", pull_request);
+                        future::ok(())
+                    })
+                });
+
+            get_batch
+                .and_then(move |_| next_client)
+                .and_then(move |client| future::ok(future::Loop::Continue(client)))
+        })
+    };
+
+    core.run(future)
 }

@@ -5,16 +5,18 @@ authors = ["Renato Zannon <renato@rrsz.com.br>"]
 
 [dependencies]
 dotenv = "0.11"
+env_logger = "0.5"
 failure = "0.1"
 failure_derive = "0.1"
 futures = "0.1"
+hyper = "0.11"
+openssl-probe = "0.1"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 tokio-core = "0.1"
 tokio-timer = "0.2"
 url = "1.7"
-hyper = "0.11"
 
 [dependencies.reqwest]
 version = "0.8"

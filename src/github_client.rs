@@ -1,17 +1,21 @@
 use std::env;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, Instant};
 use std::cell::Cell;
 use reqwest::header::{self, Authorization, Headers};
 use reqwest::unstable::async::Client;
 use failure::Error;
 use tokio_core::reactor::Handle;
-use notification::{Notification, PullRequest, ReviewRequest};
+use tokio_timer::Delay;
+use notification::{PullRequest, ReviewRequest};
 use futures::prelude::*;
-use futures::{future, stream};
-use notifications_response::NotificationsResponse;
+use futures::{future, stream, sync::oneshot};
+use futures::future::Either;
+use notification_stream::NotificationStream;
 
+#[derive(Clone)]
 pub struct GithubClient {
     http: Client,
+    last_poll_interval: Cell<Option<u64>>,
     notifications_last_modified: Cell<header::HttpDate>,
 }
 
@@ -20,85 +24,92 @@ impl GithubClient {
         let github_token = env::var("GITHUB_TOKEN")?;
         let client = Client::builder()
             .default_headers(default_headers(github_token))
+            .timeout(Duration::from_secs(30))
             .build(handle)?;
 
-        let base_time = SystemTime::now() - Duration::from_secs(60 * 60 * 48);
+        let base_time = SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 7);
         let base_time = header::HttpDate::from(base_time);
 
         Ok(GithubClient {
             http: client,
+            last_poll_interval: Cell::new(None),
             notifications_last_modified: Cell::new(base_time),
         })
     }
 
-    pub fn current_review_requests<'a>(
-        &'a self,
-    ) -> impl Stream<Item = ReviewRequest, Error = Error> + 'a {
-        self.get_all_notifications()
-            .filter_map(ReviewRequest::from_notification)
+    pub fn poll_review_requests(&self) -> (Box<Future<Item = Self, Error = Error>>, Box<Stream<Item = PullRequest, Error = Error>>) {
+        let pages_stream = NotificationStream::new(
+            self.http.clone(),
+            self.notifications_last_modified.get()
+        );
+
+        let (sender, receiver) = oneshot::channel();
+
+        let new_client = self.clone();
+        let mut new_client_init = Some((sender, new_client));
+
+        let stream = pages_stream.map(move |response| {
+            match new_client_init.take() {
+                Some((sender, new_client)) => {
+                    if let Some(lm) = response.last_modified {
+                        new_client.notifications_last_modified.set(lm);
+                    }
+
+                    if let Some(p) = response.poll_interval {
+                        new_client.last_poll_interval.set(Some(p));
+                    }
+
+                    sender.send(new_client).ok();
+                },
+
+                None => {},
+            }
+
+            stream::iter_ok(response.notifications)
+        }).flatten().filter_map(ReviewRequest::from_notification);
+
+        let pull_requests = notifications_to_pull_requests(self.http.clone(), stream);
+
+        (Box::new(receiver.map_err(Error::from)), Box::new(pull_requests))
     }
 
-    fn get_all_notifications<'a>(&'a self) -> impl Stream<Item = Notification, Error = Error> + 'a {
-        let url = Some("https://api.github.com/notifications".to_owned());
+    pub fn wait_poll_interval(&self) -> impl Future<Item = (), Error = Error> {
+        let interval = match self.last_poll_interval.get() {
+            Some(interval) => interval,
+            None => return Either::A(future::ok(())),
+        };
 
-        stream::unfold(url, move |maybe_url| {
-            maybe_url.map(|url| self.unfold_page(url))
-        }).map(stream::iter_ok)
-            .flatten()
+        eprintln!("Will wait {}s", interval);
+        let interval_end = Instant::now() + Duration::from_secs(interval);
+        let delay = Delay::new(interval_end).map_err(Error::from);
+        Either::B(delay)
     }
 
-    fn unfold_page<'a>(
-        &'a self,
-        page_url: String,
-    ) -> Box<Future<Item = (Vec<Notification>, Option<String>), Error = Error> + 'a> {
-        let result = self.get_notifications_page(page_url).map(|response| {
-            let next_page = response.next_page.clone();
-            (response.notifications, next_page)
-        });
+}
 
-        Box::new(result)
-    }
+pub fn notifications_to_pull_requests<S>(http: Client, reviews: S) -> impl Stream<Item = PullRequest, Error = Error>
+where S: Stream<Item = ReviewRequest, Error = Error> {
+    reviews.map(move |review_request| {
+            get_pr_for_review_request(http.clone(), review_request)
+                .map(Some)
+                .or_else(|err| {
+                    eprintln!("Problem getting pull request: {:?}", err);
+                    return future::ok(None);
+                })
+        })
+        .buffer_unordered(10)
+        .filter_map(|pr| pr)
+}
 
-    fn get_notifications_page<'b>(
-        &'b self,
-        page_url: String,
-    ) -> impl Future<Item = NotificationsResponse, Error = Error> + 'b {
-        let last_modified = self.notifications_last_modified.get();
-        let if_modified_since = header::IfModifiedSince(last_modified);
-
-        let request = self.http.get(&page_url).header(if_modified_since).send();
-
-        request
-            .map_err(Error::from)
-            .and_then(NotificationsResponse::from_response)
-    }
-
-    pub fn pull_requests_to_review<'a>(
-        &'a self,
-    ) -> impl Stream<Item = PullRequest, Error = Error> + 'a {
-        self.current_review_requests()
-            .map(move |review_request| {
-                self.get_pr_for_review_request(review_request)
-                    .map(Some)
-                    .or_else(|err| {
-                        eprintln!("Problem getting pull request: {:?}", err);
-                        return future::ok(None);
-                    })
-            })
-            .buffer_unordered(10)
-            .filter_map(|pr| pr)
-    }
-
-    fn get_pr_for_review_request(
-        &self,
-        review_request: ReviewRequest,
-    ) -> impl Future<Item = PullRequest, Error = Error> {
-        self.http
-            .get(&review_request.url)
-            .send()
-            .and_then(|mut response| response.json::<PullRequest>())
-            .map_err(Error::from)
-    }
+fn get_pr_for_review_request(
+    http: Client,
+    review_request: ReviewRequest,
+) -> impl Future<Item = PullRequest, Error = Error> {
+    http
+        .get(&review_request.url)
+        .send()
+        .and_then(|mut response| response.json::<PullRequest>())
+        .map_err(Error::from)
 }
 
 fn default_headers(github_token: String) -> Headers {
