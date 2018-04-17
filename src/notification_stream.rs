@@ -115,7 +115,7 @@ pub struct NotificationStream {
 
 impl NotificationStream {
     pub fn new(client: reqwestClient, last_modified: header::HttpDate) -> NotificationStream {
-        let url = Some("https://api.github.com/notifications?all=true".to_owned());
+        let url = Some("https://api.github.com/notifications".to_owned());
 
         let stream = stream::unfold(url, move |maybe_url| {
             let url = maybe_url?;
