@@ -23,12 +23,12 @@ extern crate slog_term;
 mod github_client;
 mod notification;
 mod notification_stream;
+mod notifications_polling;
 
 use dotenv::dotenv;
 use failure::Error;
 
 use tokio_core::reactor;
-use tokio_retry::{Retry, strategy::ExponentialBackoff};
 use futures::prelude::*;
 use futures::future;
 
@@ -43,9 +43,9 @@ fn main() {
     };
 
     if let Some(bt) = err.cause().backtrace() {
-        error!(logger, "backtrace" => bt);
+        error!(logger, "critical error"; "backtrace" => %bt);
     } else {
-        error!(logger, "cause" => ?err.cause());
+        error!(logger, "critical error"; "cause" => ?err.cause());
     }
 }
 
@@ -55,41 +55,10 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
     let mut core = reactor::Core::new()?;
     let client = github_client::GithubClient::new(&core.handle())?;
 
-    let future = {
-        let mut batch_number = 0;
-        let logger = &logger;
-
-        future::loop_fn(client, move |client| {
-            batch_number += 1;
-
-            let get_batch = move || {
-                let (next_client, current_batch) = client.poll_review_requests();
-                let batch_logger = logger.new(o!("batch_number" => batch_number));
-
-                client.wait_poll_interval().and_then(move |_| {
-                    let err_batch_logger = batch_logger.clone();
-
-                    current_batch.inspect_err(move |err| {
-                        error!(err_batch_logger, "Error in PullRequest batch"; "error" => %err);
-                    }).for_each(move |pull_request| {
-                        info!(batch_logger, "PR received"; "pull_request" => ?pull_request);
-                        future::ok(())
-                    })
-                }).and_then(move |_| next_client)
-            };
-
-            let retry_strategy = ExponentialBackoff::from_millis(10).take(5);
-            let future = Retry::spawn(retry_strategy, get_batch).map_err(|err| {
-                match err {
-                    tokio_retry::Error::OperationError(e) => e,
-                    tokio_retry::Error::TimerError(e) => Error::from(e)
-                }
-            });
-
-            future
-                .and_then(move |client| future::ok(future::Loop::Continue(client)))
-        })
-    };
+    let future = notifications_polling::poll_notifications(client, logger).for_each(|(pull_request, logger)| {
+        info!(logger, "PR received"; "pull_request" => ?pull_request);
+        future::ok(())
+    });
 
     core.run(future)
 }

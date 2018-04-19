@@ -8,7 +8,7 @@ use tokio_core::reactor::Handle;
 use tokio_timer::Delay;
 use notification::{PullRequest, ReviewRequest};
 use futures::prelude::*;
-use futures::{future, stream, sync::oneshot};
+use futures::{future, stream};
 use futures::future::Either;
 use notification_stream::NotificationStream;
 
@@ -37,49 +37,38 @@ impl GithubClient {
         })
     }
 
-    pub fn poll_review_requests(
+    pub fn next_review_requests(
         &self,
-    ) -> (
-        impl Future<Item = Self, Error = Error>,
-        impl Stream<Item = PullRequest, Error = Error>,
-    ) {
+    ) -> impl Future<Item = (impl Stream<Item = PullRequest, Error = Error>, Self), Error = Error> {
         let pages_stream =
             NotificationStream::new(self.http.clone(), self.notifications_last_modified.get());
 
-        let (sender, receiver) = oneshot::channel();
-
         let new_client = self.clone();
-        let mut new_client_init = Some((sender, new_client));
+        let http = self.http.clone();
 
-        let stream = pages_stream
-            .map(move |response| {
-                match new_client_init.take() {
-                    Some((sender, new_client)) => {
-                        if let Some(lm) = response.last_modified {
-                            new_client.notifications_last_modified.set(lm);
-                        }
+        pages_stream.into_future().map_err(|(err, _)| err).and_then(|(maybe_page, next_stream)| {
+            let response = match maybe_page {
+                Some(page) => page,
+                None => return future::err(format_err!("Response has 0 pages")),
+            };
 
-                        if let Some(p) = response.poll_interval {
-                            new_client.last_poll_interval.set(Some(p));
-                        }
+            if let Some(lm) = response.last_modified {
+                new_client.notifications_last_modified.set(lm);
+            }
 
-                        sender.send(new_client).ok();
-                    }
+            if let Some(p) = response.poll_interval {
+                new_client.last_poll_interval.set(Some(p));
+            }
 
-                    None => {}
-                }
+            let complete_stream = stream::once(Ok(response)).chain(next_stream)
+                .map(|response| stream::iter_ok(response.notifications))
+                .flatten()
+                .filter_map(ReviewRequest::from_notification);
 
-                stream::iter_ok(response.notifications)
-            })
-            .flatten()
-            .filter_map(ReviewRequest::from_notification);
+            let pull_requests = notifications_to_pull_requests(http, complete_stream);
 
-        let pull_requests = notifications_to_pull_requests(self.http.clone(), stream);
-
-        (
-            receiver.map_err(Error::from),
-            pull_requests,
-        )
+            future::ok((pull_requests, new_client))
+        })
     }
 
     pub fn wait_poll_interval(&self) -> impl Future<Item = (), Error = Error> {
