@@ -53,7 +53,7 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
     dotenv().ok();
 
     let mut core = reactor::Core::new()?;
-    let client = github_client::GithubClient::new(&core.handle())?;
+    let client = github_client::GithubClient::new(&core.handle(), logger.clone())?;
 
     let future = notifications_polling::poll_notifications(client, logger).for_each(|(pull_request, logger)| {
         info!(logger, "PR received"; "pull_request" => ?pull_request);

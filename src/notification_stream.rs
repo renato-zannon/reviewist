@@ -9,6 +9,7 @@ use reqwest::header;
 use futures::{future, stream};
 use futures::future::Either;
 use futures::stream::Stream;
+use slog::Logger;
 
 pub struct NotificationsResponse {
     pub notifications: Vec<Notification>,
@@ -22,11 +23,12 @@ header! { (XPollInterval, "X-Poll-Interval") => [u64] }
 impl NotificationsResponse {
     pub fn from_response(
         response: Response,
+        logger: Logger,
     ) -> impl Future<Item = NotificationsResponse, Error = Error> {
         match response.status() {
-            StatusCode::Ok => Either::A(parse_response(response)),
+            StatusCode::Ok => Either::A(parse_response(response, logger.clone())),
             StatusCode::NotModified => {
-                eprintln!("Got 304");
+                debug!(logger, "Got 304");
                 Either::B(future::ok(not_modified_response(response)))
             }
 
@@ -40,6 +42,7 @@ impl NotificationsResponse {
 
 fn parse_response(
     mut response: Response,
+    logger: Logger,
 ) -> impl Future<Item = NotificationsResponse, Error = Error> {
     let next_page = next_page_url(&response);
     let last_modified = parse_last_modified(&response);
@@ -54,7 +57,7 @@ fn parse_response(
                     Ok(notification) => Some(notification),
 
                     Err(err) => {
-                        eprintln!("Problem parsing notification: {:?}", err);
+                        warn!(logger, "Problem parsing notification"; "error" => %err);
                         return None;
                     }
                 })
@@ -114,17 +117,23 @@ pub struct NotificationStream {
 }
 
 impl NotificationStream {
-    pub fn new(client: reqwestClient, last_modified: header::HttpDate) -> NotificationStream {
+    pub fn new(client: reqwestClient, last_modified: header::HttpDate, logger: Logger) -> NotificationStream {
         let url = Some("https://api.github.com/notifications".to_owned());
 
         let stream = stream::unfold(url, move |maybe_url| {
             let url = maybe_url?;
 
-            let result =
-                get_notifications_page(client.clone(), last_modified, url).map(move |response| {
-                    let next_page = response.next_page.clone();
-                    (response, next_page)
-                });
+            let result = get_notifications_page(
+                client.clone(),
+                last_modified,
+                url,
+                logger.clone()
+            );
+
+            let result = result.map(move |response| {
+                let next_page = response.next_page.clone();
+                (response, next_page)
+            });
 
             // TODO: Remove boxing once https://github.com/rust-lang/rust/issues/49685 is solved
             let result: Box<Future<Item = _, Error = _>> = Box::new(result);
@@ -150,12 +159,17 @@ fn get_notifications_page(
     client: reqwestClient,
     last_modified: header::HttpDate,
     page_url: String,
+    logger: Logger,
 ) -> impl Future<Item = NotificationsResponse, Error = Error> {
-    eprintln!("Fetching {} with IMS {}", page_url, last_modified);
+    let logger = logger.new(o!("url" => page_url.to_string(), "last_modified" => last_modified.to_string()));
+    debug!(logger, "Fetching notifications");
+
     let if_modified_since = header::IfModifiedSince(last_modified);
 
     let request = client.get(&page_url).header(if_modified_since).send();
     request
         .map_err(Error::from)
-        .and_then(NotificationsResponse::from_response)
+        .and_then(move |response| {
+            NotificationsResponse::from_response(response, logger)
+        })
 }

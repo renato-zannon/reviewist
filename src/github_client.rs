@@ -11,16 +11,18 @@ use futures::prelude::*;
 use futures::{future, stream};
 use futures::future::Either;
 use notification_stream::NotificationStream;
+use slog::Logger;
 
 #[derive(Clone)]
 pub struct GithubClient {
     http: Client,
     last_poll_interval: Cell<Option<u64>>,
     notifications_last_modified: Cell<header::HttpDate>,
+    logger: Logger,
 }
 
 impl GithubClient {
-    pub fn new(handle: &Handle) -> Result<GithubClient, Error> {
+    pub fn new(handle: &Handle, logger: Logger) -> Result<GithubClient, Error> {
         let github_token = env::var("GITHUB_TOKEN")?;
         let client = Client::builder()
             .default_headers(default_headers(github_token))
@@ -34,22 +36,30 @@ impl GithubClient {
             http: client,
             last_poll_interval: Cell::new(None),
             notifications_last_modified: Cell::new(base_time),
+            logger,
         })
     }
 
     pub fn next_review_requests(
         &self,
     ) -> impl Future<Item = (impl Stream<Item = PullRequest, Error = Error>, Self), Error = Error> {
-        let pages_stream =
-            NotificationStream::new(self.http.clone(), self.notifications_last_modified.get());
+        let pages_stream = NotificationStream::new(
+            self.http.clone(),
+            self.notifications_last_modified.get(),
+            self.logger.clone()
+        );
 
         let new_client = self.clone();
         let http = self.http.clone();
+        let logger = self.logger.clone();
 
-        pages_stream.into_future().map_err(|(err, _)| err).and_then(|(maybe_page, next_stream)| {
+        pages_stream.into_future().map_err(|(err, _)| err).and_then(move |(maybe_page, next_stream)| {
             let response = match maybe_page {
                 Some(page) => page,
-                None => return future::err(format_err!("Response has 0 pages")),
+                None => {
+                    error!(logger, "Response didn't have first page - unable to get metadata");
+                    return future::err(format_err!("Response has 0 pages"));
+                },
             };
 
             if let Some(lm) = response.last_modified {
@@ -65,7 +75,7 @@ impl GithubClient {
                 .flatten()
                 .filter_map(ReviewRequest::from_notification);
 
-            let pull_requests = notifications_to_pull_requests(http, complete_stream);
+            let pull_requests = notifications_to_pull_requests(http, complete_stream, logger.clone());
 
             future::ok((pull_requests, new_client))
         })
@@ -78,10 +88,14 @@ impl GithubClient {
         };
 
         self.last_poll_interval.set(None);
+        let logger = self.logger.clone();
 
-        eprintln!("Will wait {}s", interval);
+        debug!(logger, "Start polling wait interval"; "length" => interval);
         let interval_end = Instant::now() + Duration::from_secs(interval);
-        let delay = Delay::new(interval_end).map_err(Error::from);
+        let delay = Delay::new(interval_end).map_err(Error::from).inspect(move |_| {
+            debug!(logger, "Finished polling wait interval"; "length" => interval);
+        });
+
         Either::B(delay)
     }
 }
@@ -89,16 +103,19 @@ impl GithubClient {
 pub fn notifications_to_pull_requests<S>(
     http: Client,
     reviews: S,
+    logger: Logger,
 ) -> impl Stream<Item = PullRequest, Error = Error>
 where
     S: Stream<Item = ReviewRequest, Error = Error>,
 {
     reviews
         .map(move |review_request| {
+            let logger = logger.clone();
+
             get_pr_for_review_request(http.clone(), review_request)
                 .map(Some)
-                .or_else(|err| {
-                    eprintln!("Problem getting pull request: {:?}", err);
+                .or_else(move |err| {
+                    warn!(logger, "Problem getting pull request"; "error" => %err);
                     return future::ok(None);
                 })
         })
