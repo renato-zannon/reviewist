@@ -19,14 +19,14 @@ pub struct Repository {
     pub name: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ReviewRequest {
     pub pr_title: String,
     pub repository: String,
     pub url: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct PullRequest {
     pub number: i64,
     pub title: String,
