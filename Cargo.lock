@@ -228,7 +228,7 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.5.8"
+version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "atty 0.2.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -797,7 +797,7 @@ dependencies = [
  "chrono 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "diesel 1.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "dotenv 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "env_logger 0.5.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "env_logger 0.5.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure_derive 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.21 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1404,7 +1404,7 @@ dependencies = [
 "checksum dotenv 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a70de3c590ce18df70743cace1cf12565637a0b26fd8b04ef10c7d33fdc66cdc"
 "checksum dtoa 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "09c3753c3db574d215cba4ea76018483895d7bff25a31b49ba45db21c48e50ab"
 "checksum encoding_rs 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)" = "98fd0f24d1fb71a4a6b9330c8ca04cbd4e7cc5d846b54ca74ff376bc7c9f798d"
-"checksum env_logger 0.5.8 (registry+https://github.com/rust-lang/crates.io-index)" = "be27f8ea102a7182093a80d98f0b78623b580eda8791cbe8e2345fe6e57567a6"
+"checksum env_logger 0.5.9 (registry+https://github.com/rust-lang/crates.io-index)" = "00c45cec4cde3daac5f036c74098b4956151525cdf360cff5ee0092c98823e54"
 "checksum error-chain 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ff511d5dc435d703f4971bc399647c9bc38e20cb41452e3b9feb4765419ed3f3"
 "checksum failure 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "934799b6c1de475a012a02dab0ace1ace43789ee4b99bcfbf1a2e3e8ced5de82"
 "checksum failure_derive 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "c7cdda555bb90c9bb67a3b670a0f42de8e73f5981524123ad8578aafec8ddb8b"
