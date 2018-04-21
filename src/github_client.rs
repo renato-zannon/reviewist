@@ -46,39 +46,46 @@ impl GithubClient {
         let pages_stream = NotificationStream::new(
             self.http.clone(),
             self.notifications_last_modified.get(),
-            self.logger.clone()
+            self.logger.clone(),
         );
 
         let new_client = self.clone();
         let http = self.http.clone();
         let logger = self.logger.clone();
 
-        pages_stream.into_future().map_err(|(err, _)| err).and_then(move |(maybe_page, next_stream)| {
-            let response = match maybe_page {
-                Some(page) => page,
-                None => {
-                    error!(logger, "Response didn't have first page - unable to get metadata");
-                    return future::err(format_err!("Response has 0 pages"));
-                },
-            };
+        pages_stream
+            .into_future()
+            .map_err(|(err, _)| err)
+            .and_then(move |(maybe_page, next_stream)| {
+                let response = match maybe_page {
+                    Some(page) => page,
+                    None => {
+                        error!(
+                            logger,
+                            "Response didn't have first page - unable to get metadata"
+                        );
+                        return future::err(format_err!("Response has 0 pages"));
+                    }
+                };
 
-            if let Some(lm) = response.last_modified {
-                new_client.notifications_last_modified.set(lm);
-            }
+                if let Some(lm) = response.last_modified {
+                    new_client.notifications_last_modified.set(lm);
+                }
 
-            if let Some(p) = response.poll_interval {
-                new_client.last_poll_interval.set(Some(p));
-            }
+                if let Some(p) = response.poll_interval {
+                    new_client.last_poll_interval.set(Some(p));
+                }
 
-            let complete_stream = stream::once(Ok(response)).chain(next_stream)
-                .map(|response| stream::iter_ok(response.notifications))
-                .flatten()
-                .filter_map(ReviewRequest::from_notification);
+                let complete_stream = stream::once(Ok(response))
+                    .chain(next_stream)
+                    .map(|response| stream::iter_ok(response.notifications))
+                    .flatten()
+                    .filter_map(ReviewRequest::from_notification);
 
-            let pull_requests = notifications_to_pull_requests(http, complete_stream, logger.clone());
+                let pull_requests = notifications_to_pull_requests(http, complete_stream, logger.clone());
 
-            future::ok((pull_requests, new_client))
-        })
+                future::ok((pull_requests, new_client))
+            })
     }
 
     pub fn wait_poll_interval(&self) -> impl Future<Item = (), Error = Error> {
@@ -92,9 +99,11 @@ impl GithubClient {
 
         debug!(logger, "Start polling wait interval"; "length" => interval);
         let interval_end = Instant::now() + Duration::from_secs(interval);
-        let delay = Delay::new(interval_end).map_err(Error::from).inspect(move |_| {
-            debug!(logger, "Finished polling wait interval"; "length" => interval);
-        });
+        let delay = Delay::new(interval_end)
+            .map_err(Error::from)
+            .inspect(move |_| {
+                debug!(logger, "Finished polling wait interval"; "length" => interval);
+            });
 
         Either::B(delay)
     }

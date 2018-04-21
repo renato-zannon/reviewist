@@ -40,10 +40,7 @@ impl NotificationsResponse {
     }
 }
 
-fn parse_response(
-    mut response: Response,
-    logger: Logger,
-) -> impl Future<Item = NotificationsResponse, Error = Error> {
+fn parse_response(mut response: Response, logger: Logger) -> impl Future<Item = NotificationsResponse, Error = Error> {
     let next_page = next_page_url(&response);
     let last_modified = parse_last_modified(&response);
     let poll_interval = parse_poll_interval(&response);
@@ -123,12 +120,7 @@ impl NotificationStream {
         let stream = stream::unfold(url, move |maybe_url| {
             let url = maybe_url?;
 
-            let result = get_notifications_page(
-                client.clone(),
-                last_modified,
-                url,
-                logger.clone()
-            );
+            let result = get_notifications_page(client.clone(), last_modified, url, logger.clone());
 
             let result = result.map(move |response| {
                 let next_page = response.next_page.clone();
@@ -169,7 +161,5 @@ fn get_notifications_page(
     let request = client.get(&page_url).header(if_modified_since).send();
     request
         .map_err(Error::from)
-        .and_then(move |response| {
-            NotificationsResponse::from_response(response, logger)
-        })
+        .and_then(move |response| NotificationsResponse::from_response(response, logger))
 }
