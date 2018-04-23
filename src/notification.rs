@@ -1,3 +1,5 @@
+use chrono::prelude::*;
+
 #[derive(Debug, Deserialize)]
 pub struct Notification {
     pub reason: String,
@@ -14,7 +16,7 @@ pub struct Subject {
     pub url: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Repository {
     pub name: String,
 }
@@ -31,6 +33,27 @@ pub struct PullRequest {
     pub number: i64,
     pub title: String,
     pub html_url: String,
+
+    pub created_at: DateTime<Local>,
+    pub merged_at: Option<DateTime<Local>>,
+    pub closed_at: Option<DateTime<Local>>,
+
+    base: PullRequestBase,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct PullRequestBase {
+    repo: Repository,
+}
+
+impl PullRequest {
+    pub fn is_open(&self) -> bool {
+        self.merged_at.is_none() && self.closed_at.is_none()
+    }
+
+    pub fn repo(&self) -> &str {
+        &self.base.repo.name
+    }
 }
 
 impl ReviewRequest {

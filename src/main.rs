@@ -1,3 +1,4 @@
+extern crate chrono;
 extern crate dotenv;
 extern crate env_logger;
 #[macro_use]
@@ -14,8 +15,8 @@ extern crate serde_json;
 extern crate tokio;
 extern crate tokio_core;
 extern crate tokio_retry;
-extern crate tokio_timer;
 extern crate tokio_threadpool;
+extern crate tokio_timer;
 
 #[macro_use]
 extern crate slog;
@@ -62,26 +63,26 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
     let mut core = reactor::Core::new()?;
     let client = github_client::GithubClient::new(&core.handle(), logger.clone())?;
 
-    let executor = core.runtime().executor();
-
     let future = notifications_polling::poll_notifications(client, logger).for_each(move |(pull_request, logger)| {
-        println!("oie");
-
-        let pr = pull_request.clone();
         let record_logger = logger.new(o!("pull_request" => pull_request.number));
-        let handler = handler.clone();
 
-        executor.spawn(future::lazy(move || {
-            handler.record_review_request(pr).map_err(move |err| {
-                error!(record_logger, "Error while recording review request"; "err" => %err);
-            })
-        }));
+        if !pull_request.is_open() {
+            debug!(record_logger, "Skipping closed pull request");
+            return future::ok(());
+        }
+
+        tokio::spawn(
+            handler
+                .record_review_request(pull_request.clone())
+                .map_err(move |err| {
+                    error!(record_logger, "Error while recording review request"; "err" => %err);
+                }),
+        );
 
         info!(logger, "PR received"; "pull_request" => ?pull_request);
         future::ok(())
     });
 
-    println!("tchau");
     core.run(future)
 }
 
@@ -110,7 +111,7 @@ mod review_handler {
     use std::sync::{Arc, Mutex};
 
     #[derive(Insertable)]
-    #[table_name="review_requests"]
+    #[table_name = "review_requests"]
     pub struct NewReviewRequest {
         project: String,
         pr_number: String,
@@ -125,7 +126,7 @@ mod review_handler {
     impl ReviewHandler {
         pub fn record_review_request(&self, pr: PullRequest) -> impl Future<Item = (), Error = Error> {
             let new_request = NewReviewRequest {
-                project: "lol123".to_string(),
+                project: pr.repo().to_string(),
                 pr_url: pr.html_url,
                 pr_number: pr.number.to_string(),
             };
@@ -136,9 +137,7 @@ mod review_handler {
                     use diesel::insert_into;
                     use super::schema::review_requests::dsl::*;
 
-                    println!("trying to get conn");
                     let conn = conn.lock().unwrap();
-                    println!("got conn");
 
                     insert_into(review_requests)
                         .values(&new_request)
@@ -147,9 +146,9 @@ mod review_handler {
                 })
             }).then(|res| {
                 let result = match res {
-                    Ok(Ok(_))    => Ok(()),
+                    Ok(Ok(_)) => Ok(()),
                     Ok(Err(err)) => Err(err),
-                    Err(_)       => Err(format_err!("Error while scheduling work")),
+                    Err(_) => Err(format_err!("Error while scheduling work")),
                 };
 
                 future::result(result)
@@ -167,8 +166,7 @@ mod review_handler {
     fn establish_connection() -> Result<SqliteConnection, Error> {
         let database_url = env::var("DATABASE_URL").map_err(|_| format_err!("DATABASE_URL must be set"))?;
 
-        SqliteConnection::establish(&database_url).map_err(move |err| {
-            format_err!("Error while connecting to {}: {}", database_url, err)
-        })
+        SqliteConnection::establish(&database_url)
+            .map_err(move |err| format_err!("Error while connecting to {}: {}", database_url, err))
     }
 }
