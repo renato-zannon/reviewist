@@ -5,5 +5,6 @@ table! {
         pr_number -> Text,
         pr_url -> Text,
         created_at -> Timestamp,
+        pr_title -> Text,
     }
 }

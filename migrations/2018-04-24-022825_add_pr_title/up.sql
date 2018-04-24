@@ -1,0 +1,2 @@
+ALTER TABLE review_requests
+  ADD COLUMN pr_title VARCHAR(255) NOT NULL DEFAULT '';

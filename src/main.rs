@@ -116,6 +116,7 @@ mod review_handler {
         project: String,
         pr_number: String,
         pr_url: String,
+        pr_title: String,
     }
 
     #[derive(Clone)]
@@ -129,22 +130,13 @@ mod review_handler {
                 project: pr.repo().to_string(),
                 pr_url: pr.html_url,
                 pr_number: pr.number.to_string(),
+                pr_title: pr.title,
             };
             let conn = self.connection.clone();
+            let perform_insert = move || insert_review_request(&new_request, &*conn.lock().unwrap());
 
-            poll_fn(move || {
-                blocking(|| {
-                    use diesel::insert_into;
-                    use super::schema::review_requests::dsl::*;
-
-                    let conn = conn.lock().unwrap();
-
-                    insert_into(review_requests)
-                        .values(&new_request)
-                        .execute(&*conn)
-                        .map_err(Error::from)
-                })
-            }).then(|res| {
+            poll_fn(move || blocking(&perform_insert))
+            .then(|res| {
                 let result = match res {
                     Ok(Ok(_)) => Ok(()),
                     Ok(Err(err)) => Err(err),
@@ -161,6 +153,17 @@ mod review_handler {
         Ok(ReviewHandler {
             connection: Arc::new(Mutex::new(connection)),
         })
+    }
+
+    fn insert_review_request(new_request: &NewReviewRequest, conn: &SqliteConnection) -> Result<(), Error> {
+        use diesel::insert_into;
+        use super::schema::review_requests::dsl::*;
+
+        insert_into(review_requests)
+            .values(new_request)
+            .execute(conn)
+            .map(|_| ())
+            .map_err(Error::from)
     }
 
     fn establish_connection() -> Result<SqliteConnection, Error> {

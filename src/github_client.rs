@@ -29,7 +29,7 @@ impl GithubClient {
             .timeout(Duration::from_secs(30))
             .build(handle)?;
 
-        let base_time = SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 7);
+        let base_time = SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 30 * 12);
         let base_time = header::HttpDate::from(base_time);
 
         Ok(GithubClient {
