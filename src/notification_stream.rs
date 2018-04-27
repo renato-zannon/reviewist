@@ -127,8 +127,6 @@ impl NotificationStream {
                 (response, next_page)
             });
 
-            // TODO: Remove boxing once https://github.com/rust-lang/rust/issues/49685 is solved
-            let result: Box<Future<Item = _, Error = _>> = Box::new(result);
             Some(result)
         });
 

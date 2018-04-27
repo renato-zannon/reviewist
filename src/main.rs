@@ -135,8 +135,7 @@ mod review_handler {
             let conn = self.connection.clone();
             let perform_insert = move || insert_review_request(&new_request, &*conn.lock().unwrap());
 
-            poll_fn(move || blocking(&perform_insert))
-            .then(|res| {
+            poll_fn(move || blocking(&perform_insert)).then(|res| {
                 let result = match res {
                     Ok(Ok(_)) => Ok(()),
                     Ok(Err(err)) => Err(err),
