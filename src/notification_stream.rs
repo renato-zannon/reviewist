@@ -109,40 +109,21 @@ fn next_page_url(response: &Response) -> Option<String> {
     Some(value?.link().to_owned())
 }
 
-pub struct NotificationStream {
-    inner: Box<Stream<Item = NotificationsResponse, Error = Error> + 'static>,
-}
+pub fn new(client: reqwestClient, last_modified: header::HttpDate, logger: Logger) -> impl Stream<Item = NotificationsResponse, Error = Error> {
+    let url = Some("https://api.github.com/notifications".to_owned());
 
-impl NotificationStream {
-    pub fn new(client: reqwestClient, last_modified: header::HttpDate, logger: Logger) -> NotificationStream {
-        let url = Some("https://api.github.com/notifications".to_owned());
+    stream::unfold(url, move |maybe_url| {
+        let url = maybe_url?;
 
-        let stream = stream::unfold(url, move |maybe_url| {
-            let url = maybe_url?;
+        let result = get_notifications_page(client.clone(), last_modified, url, logger.clone());
 
-            let result = get_notifications_page(client.clone(), last_modified, url, logger.clone());
-
-            let result = result.map(move |response| {
-                let next_page = response.next_page.clone();
-                (response, next_page)
-            });
-
-            Some(result)
+        let result = result.map(move |response| {
+            let next_page = response.next_page.clone();
+            (response, next_page)
         });
 
-        NotificationStream {
-            inner: Box::new(stream),
-        }
-    }
-}
-
-impl Stream for NotificationStream {
-    type Item = NotificationsResponse;
-    type Error = Error;
-
-    fn poll(&mut self) -> Poll<Option<NotificationsResponse>, Error> {
-        self.inner.poll()
-    }
+        Some(result)
+    })
 }
 
 fn get_notifications_page(

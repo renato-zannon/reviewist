@@ -10,7 +10,7 @@ use notification::{PullRequest, ReviewRequest};
 use futures::prelude::*;
 use futures::{future, stream};
 use futures::future::Either;
-use notification_stream::NotificationStream;
+use notification_stream;
 use slog::Logger;
 
 #[derive(Clone)]
@@ -43,7 +43,7 @@ impl GithubClient {
     pub fn next_review_requests(
         &self,
     ) -> impl Future<Item = (impl Stream<Item = PullRequest, Error = Error>, Self), Error = Error> {
-        let pages_stream = NotificationStream::new(
+        let pages_stream = notification_stream::new(
             self.http.clone(),
             self.notifications_last_modified.get(),
             self.logger.clone(),
