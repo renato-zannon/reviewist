@@ -109,7 +109,11 @@ fn next_page_url(response: &Response) -> Option<String> {
     Some(value?.link().to_owned())
 }
 
-pub fn new(client: reqwestClient, last_modified: header::HttpDate, logger: Logger) -> impl Stream<Item = NotificationsResponse, Error = Error> {
+pub fn new(
+    client: reqwestClient,
+    last_modified: header::HttpDate,
+    logger: Logger,
+) -> impl Stream<Item = NotificationsResponse, Error = Error> {
     let url = Some("https://api.github.com/notifications".to_owned());
 
     stream::unfold(url, move |maybe_url| {

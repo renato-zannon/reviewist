@@ -58,10 +58,10 @@ fn main() {
 
 fn run(logger: slog::Logger) -> Result<(), Error> {
     dotenv().ok();
-    let handler = review_handler::new()?;
 
     let mut core = reactor::Core::new()?;
     let client = github_client::GithubClient::new(&core.handle(), logger.clone())?;
+    let handler = review_handler::new()?;
 
     let future = notifications_polling::poll_notifications(client, logger).for_each(move |(pull_request, logger)| {
         let record_logger = logger.new(o!("pull_request" => pull_request.number));
