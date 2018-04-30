@@ -94,7 +94,6 @@ impl GithubClient {
             None => return Either::A(future::ok(())),
         };
 
-        self.last_poll_interval.set(None);
         let logger = self.logger.clone();
 
         debug!(logger, "Start polling wait interval"; "length" => interval);
@@ -106,6 +105,10 @@ impl GithubClient {
             });
 
         Either::B(delay)
+    }
+
+    pub fn clear_poll_interval(&self) {
+        self.last_poll_interval.set(None);
     }
 }
 
