@@ -171,13 +171,28 @@ mod review_handler {
     }
 
     fn insert_review_request(new_request: &NewReviewRequest, conn: &SqliteConnection) -> Result<bool, Error> {
-        use diesel::insert_into;
+        use diesel::{insert_into, select};
+        use diesel::dsl::exists;
         use super::schema::review_requests::dsl::*;
+
+        let existing_rq = review_requests.filter(
+            project
+                .eq(&new_request.project)
+                .and(pr_number.eq(&new_request.pr_number)),
+        );
+
+        let rq_exists = select(exists(existing_rq))
+            .get_result(conn)
+            .map_err(Error::from)?;
+
+        if rq_exists {
+            return Ok(false);
+        }
 
         insert_into(review_requests)
             .values(new_request)
             .execute(conn)
-            .map(|count| count > 0)
+            .map(|_| true)
             .map_err(Error::from)
     }
 
