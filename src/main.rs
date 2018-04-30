@@ -27,6 +27,7 @@ extern crate slog_term;
 extern crate diesel;
 
 mod github_client;
+mod todoist_client;
 mod notification;
 mod notification_stream;
 mod notifications_polling;
@@ -34,13 +35,15 @@ mod schema;
 
 use notification::PullRequest;
 use review_handler::ReviewHandler;
+use todoist_client::TodoistClient;
 
 use dotenv::dotenv;
 use failure::Error;
 
 use tokio_core::reactor;
 use futures::prelude::*;
-use futures::future;
+use futures::future::{self, Either};
+use futures::sync::oneshot;
 
 fn main() {
     let logger = configure_slog();
@@ -63,26 +66,48 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
     dotenv().ok();
 
     let mut core = reactor::Core::new()?;
-    let client = github_client::GithubClient::new(&core.handle(), logger.clone())?;
+    let github_client = github_client::GithubClient::new(&core.handle(), logger.clone())?;
+    let todoist_client = todoist_client::TodoistClient::new(&core.handle(), logger.clone())?;
+
     let handler = review_handler::new()?;
 
-    let f = notifications_polling::poll_notifications(client, logger).for_each(move |(pull_request, logger)| {
+    let f = notifications_polling::poll_notifications(github_client, logger).for_each(move |(pull_request, logger)| {
         let record_logger = logger.new(o!("pull_request" => pull_request.number));
 
         if !pull_request.is_open() {
             debug!(record_logger, "Skipping closed pull request");
-            return future::ok(());
+            return Either::A(future::ok(()));
         }
 
-        let handler_result = handle_pr(handler.clone(), pull_request, record_logger);
-        tokio::spawn(handler_result);
-        future::ok(())
+        let (sender, receiver) = oneshot::channel();
+
+        let h = handler.clone();
+        tokio::spawn(future::lazy(move || {
+            handle_pr(h, pull_request, record_logger).map(|pr| {
+                sender.send(pr).ok();
+            })
+        }));
+
+        let todoist_client = todoist_client.clone();
+        let result = receiver.map_err(Error::from).and_then(move |maybe_pr| {
+            match maybe_pr {
+                Some(pr) => {
+                    Either::A(todoist_client.create_task_for_pr(&pr))
+                },
+
+                None => {
+                    Either::B(future::ok(()))
+                },
+            }
+        });
+
+        Either::B(result)
     });
 
     core.run(f)
 }
 
-fn handle_pr(handler: ReviewHandler, pr: PullRequest, logger: slog::Logger) -> impl Future<Item = (), Error = ()> {
+fn handle_pr(handler: ReviewHandler, pr: PullRequest, logger: slog::Logger) -> impl Future<Item = Option<PullRequest>, Error = ()> {
     let err_logger = logger.clone();
 
     handler
@@ -92,12 +117,12 @@ fn handle_pr(handler: ReviewHandler, pr: PullRequest, logger: slog::Logger) -> i
         })
         .and_then(move |maybe_result| {
             let pull_request = match maybe_result {
-                None => return future::ok(()),
+                None => return future::ok(None),
                 Some(res) => res,
             };
 
             info!(logger, "PR received"; "pull_request" => ?pull_request);
-            future::ok(())
+            future::ok(Some(pull_request))
         })
 }
 
