@@ -65,7 +65,26 @@ fn get_next_batch(
             (stream, next_client)
         })
         .map_err(move |err| {
-            error!(logger, "Error while preparing stream"; "error" => %err);
+            if is_http_incomplete(&err) {
+                debug!(logger, "Got early HTTP EOF"; "error" => ?err);
+            } else {
+                error!(logger, "Error while preparing stream"; "error" => ?err);
+            }
+
             return err;
         })
+}
+
+fn is_http_incomplete(err: &Error) -> bool {
+    match downcast_to_hyper_error(err) {
+        Some(::hyper::Error::Incomplete) => true,
+        _ => false,
+    }
+}
+
+fn downcast_to_hyper_error(err: &Error) -> Option<&::hyper::Error> {
+    let reqwest_error = err.downcast_ref::<::reqwest::Error>()?;
+    let error_ref = reqwest_error.get_ref()?;
+
+    error_ref.downcast_ref::<::hyper::Error>()
 }
