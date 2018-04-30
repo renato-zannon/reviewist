@@ -32,6 +32,9 @@ mod notification_stream;
 mod notifications_polling;
 mod schema;
 
+use notification::PullRequest;
+use review_handler::ReviewHandler;
+
 use dotenv::dotenv;
 use failure::Error;
 
@@ -63,7 +66,7 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
     let client = github_client::GithubClient::new(&core.handle(), logger.clone())?;
     let handler = review_handler::new()?;
 
-    let future = notifications_polling::poll_notifications(client, logger).for_each(move |(pull_request, logger)| {
+    let f = notifications_polling::poll_notifications(client, logger).for_each(move |(pull_request, logger)| {
         let record_logger = logger.new(o!("pull_request" => pull_request.number));
 
         if !pull_request.is_open() {
@@ -71,19 +74,31 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
             return future::ok(());
         }
 
-        tokio::spawn(
-            handler
-                .record_review_request(pull_request.clone())
-                .map_err(move |err| {
-                    error!(record_logger, "Error while recording review request"; "err" => %err);
-                }),
-        );
-
-        info!(logger, "PR received"; "pull_request" => ?pull_request);
+        let handler_result = handle_pr(handler.clone(), pull_request, record_logger);
+        tokio::spawn(handler_result);
         future::ok(())
     });
 
-    core.run(future)
+    core.run(f)
+}
+
+fn handle_pr(handler: ReviewHandler, pr: PullRequest, logger: slog::Logger) -> impl Future<Item = (), Error = ()> {
+    let err_logger = logger.clone();
+
+    handler
+        .record_review_request(pr)
+        .map_err(move |err| {
+            error!(err_logger, "Error while recording review request"; "err" => %err);
+        })
+        .and_then(move |maybe_result| {
+            let pull_request = match maybe_result {
+                None => return future::ok(()),
+                Some(res) => res,
+            };
+
+            info!(logger, "PR received"; "pull_request" => ?pull_request);
+            future::ok(())
+        })
 }
 
 fn configure_slog() -> slog::Logger {
@@ -125,19 +140,20 @@ mod review_handler {
     }
 
     impl ReviewHandler {
-        pub fn record_review_request(&self, pr: PullRequest) -> impl Future<Item = (), Error = Error> {
+        pub fn record_review_request(&self, pr: PullRequest) -> impl Future<Item = Option<PullRequest>, Error = Error> {
             let new_request = NewReviewRequest {
                 project: pr.repo().to_string(),
-                pr_url: pr.html_url,
+                pr_url: pr.html_url.to_string(),
                 pr_number: pr.number.to_string(),
-                pr_title: pr.title,
+                pr_title: pr.title.to_string(),
             };
             let conn = self.connection.clone();
             let perform_insert = move || insert_review_request(&new_request, &*conn.lock().unwrap());
 
             poll_fn(move || blocking(&perform_insert)).then(|res| {
                 let result = match res {
-                    Ok(Ok(_)) => Ok(()),
+                    Ok(Ok(true)) => Ok(Some(pr)),
+                    Ok(Ok(false)) => Ok(None),
                     Ok(Err(err)) => Err(err),
                     Err(_) => Err(format_err!("Error while scheduling work")),
                 };
@@ -154,14 +170,14 @@ mod review_handler {
         })
     }
 
-    fn insert_review_request(new_request: &NewReviewRequest, conn: &SqliteConnection) -> Result<(), Error> {
+    fn insert_review_request(new_request: &NewReviewRequest, conn: &SqliteConnection) -> Result<bool, Error> {
         use diesel::insert_into;
         use super::schema::review_requests::dsl::*;
 
         insert_into(review_requests)
             .values(new_request)
             .execute(conn)
-            .map(|_| ())
+            .map(|count| count > 0)
             .map_err(Error::from)
     }
 
