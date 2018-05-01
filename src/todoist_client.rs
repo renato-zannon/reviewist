@@ -40,20 +40,29 @@ impl TodoistClient {
     pub fn create_task_for_pr(&self, pr: &PullRequest) -> impl Future<Item = (), Error = Error> {
         let new_task = NewTask::for_pull_request(pr);
 
-        self.http.post(NEW_TASK_URL).json(&new_task).send().map_err(Error::from).map(|_| ())
+        self.http
+            .post(NEW_TASK_URL)
+            .json(&new_task)
+            .send()
+            .map_err(Error::from)
+            .map(|_| ())
     }
 }
 
 impl NewTask {
     fn for_pull_request(pr: &PullRequest) -> NewTask {
-        let content = format!("{url} ({project}#{number}: {title})",
-          url = pr.html_url,
-          project = pr.repo(),
-          number = pr.number,
-          title = pr.title
+        let content = format!(
+            "{url} ({project}#{number}: {title})",
+            url = pr.html_url,
+            project = pr.repo(),
+            number = pr.number,
+            title = pr.title
         );
 
-        NewTask { content, due_string: "today".to_string() }
+        NewTask {
+            content,
+            due_string: "today".to_string(),
+        }
     }
 }
 

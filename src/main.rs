@@ -79,26 +79,11 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
             return Either::A(future::ok(()));
         }
 
-        let (sender, receiver) = oneshot::channel();
-
-        let h = handler.clone();
-        tokio::spawn(future::lazy(move || {
-            handle_pr(h, pull_request, record_logger).map(|pr| {
-                sender.send(pr).ok();
-            })
-        }));
-
         let todoist_client = todoist_client.clone();
-        let result = receiver.map_err(Error::from).and_then(move |maybe_pr| {
-            match maybe_pr {
-                Some(pr) => {
-                    Either::A(todoist_client.create_task_for_pr(&pr))
-                },
+        let result = handle_pr(handler.clone(), pull_request, record_logger).and_then(move |maybe_pr| match maybe_pr {
+            Some(pr) => Either::A(todoist_client.create_task_for_pr(&pr)),
 
-                None => {
-                    Either::B(future::ok(()))
-                },
-            }
+            None => Either::B(future::ok(())),
         });
 
         Either::B(result)
@@ -107,23 +92,35 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
     core.run(f)
 }
 
-fn handle_pr(handler: ReviewHandler, pr: PullRequest, logger: slog::Logger) -> impl Future<Item = Option<PullRequest>, Error = ()> {
-    let err_logger = logger.clone();
+fn handle_pr(
+    handler: ReviewHandler,
+    pr: PullRequest,
+    logger: slog::Logger,
+) -> impl Future<Item = Option<PullRequest>, Error = Error> {
+    let (sender, receiver) = oneshot::channel();
 
-    handler
-        .record_review_request(pr)
-        .map_err(move |err| {
-            error!(err_logger, "Error while recording review request"; "err" => %err);
-        })
-        .and_then(move |maybe_result| {
-            let pull_request = match maybe_result {
-                None => return future::ok(None),
-                Some(res) => res,
-            };
+    let future = handler.record_review_request(pr).then(move |maybe_result| {
+        match maybe_result {
+            Ok(Some(pr)) => {
+                info!(logger, "PR received"; "pull_request" => ?pr);
+                sender.send(Some(pr)).ok();
+            }
 
-            info!(logger, "PR received"; "pull_request" => ?pull_request);
-            future::ok(Some(pull_request))
-        })
+            Err(err) => {
+                error!(logger, "Error while recording review request"; "err" => %err);
+                sender.send(None).ok();
+            }
+
+            _ => {
+                sender.send(None).ok();
+            }
+        };
+
+        Ok(())
+    });
+
+    tokio::spawn(future);
+    receiver.map_err(Error::from)
 }
 
 fn configure_slog() -> slog::Logger {
