@@ -1,17 +1,20 @@
 use std::env;
 use std::time::{Duration, Instant, SystemTime};
 use std::cell::Cell;
+
 use reqwest::header::{self, Authorization, Headers};
 use reqwest::unstable::async::Client;
 use failure::Error;
 use tokio_core::reactor::Handle;
 use tokio_timer::Delay;
-use notification::{PullRequest, ReviewRequest};
 use futures::prelude::*;
 use futures::{future, stream};
 use futures::future::Either;
-use notifications_response::{self, NotificationsResponse};
 use slog::Logger;
+
+use notification::{PullRequest, ReviewRequest};
+use notifications_response::{self, NotificationsResponse};
+use notifications_polling;
 
 #[derive(Clone)]
 pub struct GithubClient {
@@ -38,6 +41,11 @@ impl GithubClient {
             notifications_last_modified: Cell::new(base_time),
             logger,
         })
+    }
+
+    pub fn into_notifications_polling(self) -> impl Stream<Item = (PullRequest, Logger), Error = Error> {
+        let logger = self.logger.clone();
+        notifications_polling::poll_notifications(self, logger)
     }
 
     pub fn next_review_requests(

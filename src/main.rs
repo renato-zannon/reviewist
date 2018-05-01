@@ -67,25 +67,27 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
 
     let handler = review_handler::new()?;
 
-    let f = notifications_polling::poll_notifications(github_client, logger).for_each(move |(pull_request, logger)| {
-        let record_logger = logger.new(o!("pull_request" => pull_request.number));
+    let f = github_client
+        .into_notifications_polling()
+        .for_each(move |(pull_request, logger)| {
+            let record_logger = logger.new(o!("pull_request" => pull_request.number));
 
-        if !pull_request.is_open() {
-            debug!(record_logger, "Skipping closed pull request");
-            return Either::A(future::ok(()));
-        }
+            if !pull_request.is_open() {
+                debug!(record_logger, "Skipping closed pull request");
+                return Either::A(future::ok(()));
+            }
 
-        let todoist_client = todoist_client.clone();
-        let result = handler
-            .record_in_task(pull_request, record_logger)
-            .and_then(move |maybe_pr| match maybe_pr {
-                Some(pr) => Either::A(todoist_client.create_task_for_pr(&pr)),
+            let todoist_client = todoist_client.clone();
+            let result = handler
+                .record_in_task(pull_request, record_logger)
+                .and_then(move |maybe_pr| match maybe_pr {
+                    Some(pr) => Either::A(todoist_client.create_task_for_pr(&pr)),
 
-                None => Either::B(future::ok(())),
-            });
+                    None => Either::B(future::ok(())),
+                });
 
-        Either::B(result)
-    });
+            Either::B(result)
+        });
 
     core.run(f)
 }
