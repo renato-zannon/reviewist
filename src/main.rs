@@ -65,7 +65,7 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
     let handler = review_handler::new()?;
 
     let f = github_client
-        .into_notifications_polling()
+        .into_pull_request_stream()
         .for_each(move |(pull_request, logger)| {
             let record_logger = logger.new(o!("pull_request" => pull_request.number));
 

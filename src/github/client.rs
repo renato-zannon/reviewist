@@ -43,7 +43,7 @@ pub fn new(handle: &Handle, logger: Logger) -> Result<GithubClient, Error> {
 }
 
 impl GithubClient {
-    pub fn into_notifications_polling(self) -> impl Stream<Item = (PullRequest, Logger), Error = Error> {
+    pub fn into_pull_request_stream(self) -> impl Stream<Item = (PullRequest, Logger), Error = Error> {
         let logger = self.logger.clone();
         notifications_polling::poll_notifications(self, logger)
     }
