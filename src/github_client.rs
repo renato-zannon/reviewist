@@ -10,7 +10,7 @@ use notification::{PullRequest, ReviewRequest};
 use futures::prelude::*;
 use futures::{future, stream};
 use futures::future::Either;
-use notification_stream;
+use notifications_response::{self, NotificationsResponse};
 use slog::Logger;
 
 #[derive(Clone)]
@@ -43,11 +43,7 @@ impl GithubClient {
     pub fn next_review_requests(
         &self,
     ) -> impl Future<Item = (impl Stream<Item = PullRequest, Error = Error>, Self), Error = Error> {
-        let pages_stream = notification_stream::new(
-            self.http.clone(),
-            self.notifications_last_modified.get(),
-            self.logger.clone(),
-        );
+        let pages_stream = self.current_notifications();
 
         let new_client = self.clone();
         let http = self.http.clone();
@@ -107,8 +103,24 @@ impl GithubClient {
         Either::B(delay)
     }
 
-    pub fn clear_poll_interval(&self) {
-        self.last_poll_interval.set(None);
+    fn current_notifications(&self) -> impl Stream<Item = NotificationsResponse, Error = Error> {
+        let url = Some("https://api.github.com/notifications".to_owned());
+        let last_modified = self.notifications_last_modified.get();
+        let logger = self.logger.clone();
+        let client = self.http.clone();
+
+        stream::unfold(url, move |maybe_url| {
+            let url = maybe_url?;
+
+            let result = get_notifications_page(client.clone(), last_modified, url, logger.clone());
+
+            let result = result.map(move |response| {
+                let next_page = response.next_page.clone();
+                (response, next_page)
+            });
+
+            Some(result)
+        })
     }
 }
 
@@ -151,4 +163,21 @@ fn default_headers(github_token: String) -> Headers {
     headers.set(auth_header);
 
     headers
+}
+
+fn get_notifications_page(
+    client: Client,
+    last_modified: header::HttpDate,
+    page_url: String,
+    logger: Logger,
+) -> impl Future<Item = NotificationsResponse, Error = Error> {
+    let logger = logger.new(o!("url" => page_url.to_string(), "last_modified" => last_modified.to_string()));
+    debug!(logger, "Fetching notifications");
+
+    let if_modified_since = header::IfModifiedSince(last_modified);
+
+    let request = client.get(&page_url).header(if_modified_since).send();
+    request
+        .map_err(Error::from)
+        .and_then(move |response| notifications_response::from_http(response, logger))
 }

@@ -29,13 +29,12 @@ extern crate diesel;
 mod github_client;
 mod todoist_client;
 mod notification;
-mod notification_stream;
+mod notifications_response;
 mod notifications_polling;
 mod schema;
 
 use notification::PullRequest;
 use review_handler::ReviewHandler;
-use todoist_client::TodoistClient;
 
 use dotenv::dotenv;
 use failure::Error;

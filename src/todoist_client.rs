@@ -1,12 +1,11 @@
 use std::env;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use reqwest::header::{Authorization, Headers};
 use reqwest::unstable::async::Client;
 use failure::Error;
 use tokio_core::reactor::Handle;
 use notification::PullRequest;
 use futures::prelude::*;
-use futures::{future, stream};
 use slog::Logger;
 
 #[derive(Clone)]
