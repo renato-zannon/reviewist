@@ -1,5 +1,3 @@
-use github_client::GithubClient;
-use notification::PullRequest;
 use futures::prelude::*;
 use futures::stream;
 use failure::Error;
@@ -7,6 +5,8 @@ use tokio_retry::{self, Retry, strategy::ExponentialBackoff};
 use slog::Logger;
 use std::rc::Rc;
 use std::cell::Cell;
+
+use github::{GithubClient, PullRequest};
 
 pub fn poll_notifications(
     client: GithubClient,

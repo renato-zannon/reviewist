@@ -12,9 +12,9 @@ use futures::{future, stream};
 use futures::future::Either;
 use slog::Logger;
 
-use notification::{PullRequest, ReviewRequest};
-use notifications_response::{self, NotificationsResponse};
-use notifications_polling;
+use github::notification::{PullRequest, ReviewRequest};
+use github::notifications_response::{self, NotificationsResponse};
+use github::notifications_polling;
 
 #[derive(Clone)]
 pub struct GithubClient {
@@ -24,25 +24,25 @@ pub struct GithubClient {
     logger: Logger,
 }
 
+pub fn new(handle: &Handle, logger: Logger) -> Result<GithubClient, Error> {
+    let github_token = env::var("GITHUB_TOKEN")?;
+    let client = Client::builder()
+        .default_headers(default_headers(github_token))
+        .timeout(Duration::from_secs(30))
+        .build(handle)?;
+
+    let base_time = SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 7);
+    let base_time = header::HttpDate::from(base_time);
+
+    Ok(GithubClient {
+        http: client,
+        last_poll_interval: Cell::new(None),
+        notifications_last_modified: Cell::new(base_time),
+        logger,
+    })
+}
+
 impl GithubClient {
-    pub fn new(handle: &Handle, logger: Logger) -> Result<GithubClient, Error> {
-        let github_token = env::var("GITHUB_TOKEN")?;
-        let client = Client::builder()
-            .default_headers(default_headers(github_token))
-            .timeout(Duration::from_secs(30))
-            .build(handle)?;
-
-        let base_time = SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 7);
-        let base_time = header::HttpDate::from(base_time);
-
-        Ok(GithubClient {
-            http: client,
-            last_poll_interval: Cell::new(None),
-            notifications_last_modified: Cell::new(base_time),
-            logger,
-        })
-    }
-
     pub fn into_notifications_polling(self) -> impl Stream<Item = (PullRequest, Logger), Error = Error> {
         let logger = self.logger.clone();
         notifications_polling::poll_notifications(self, logger)

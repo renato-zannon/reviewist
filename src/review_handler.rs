@@ -11,7 +11,7 @@ use tokio;
 use super::schema::review_requests;
 use slog::Logger;
 
-use notification::PullRequest;
+use github::PullRequest;
 use std::sync::{Arc, Mutex};
 
 #[derive(Insertable)]

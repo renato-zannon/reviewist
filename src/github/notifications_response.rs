@@ -3,10 +3,11 @@ use reqwest::StatusCode;
 use serde_json::{self, Value};
 use failure::Error;
 use futures::prelude::*;
-use notification::Notification;
 use reqwest::header;
 use futures::future::{self, Either};
 use slog::Logger;
+
+use github::notification::Notification;
 
 pub struct NotificationsResponse {
     pub notifications: Vec<Notification>,

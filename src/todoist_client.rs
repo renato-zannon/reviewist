@@ -4,9 +4,10 @@ use reqwest::header::{Authorization, Headers};
 use reqwest::unstable::async::Client;
 use failure::Error;
 use tokio_core::reactor::Handle;
-use notification::PullRequest;
 use futures::prelude::*;
 use slog::Logger;
+
+use github::PullRequest;
 
 #[derive(Clone)]
 pub struct TodoistClient {

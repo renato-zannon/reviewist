@@ -26,11 +26,8 @@ extern crate slog_term;
 #[macro_use]
 extern crate diesel;
 
-mod github_client;
+mod github;
 mod todoist_client;
-mod notification;
-mod notifications_response;
-mod notifications_polling;
 mod review_handler;
 mod schema;
 
@@ -62,7 +59,7 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
     dotenv().ok();
 
     let mut core = reactor::Core::new()?;
-    let github_client = github_client::GithubClient::new(&core.handle(), logger.clone())?;
+    let github_client = github::new_client(&core.handle(), logger.clone())?;
     let todoist_client = todoist_client::TodoistClient::new(&core.handle(), logger.clone())?;
 
     let handler = review_handler::new()?;
