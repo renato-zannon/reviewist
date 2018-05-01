@@ -33,16 +33,12 @@ mod notifications_response;
 mod notifications_polling;
 mod schema;
 
-use notification::PullRequest;
-use review_handler::ReviewHandler;
-
 use dotenv::dotenv;
 use failure::Error;
 
 use tokio_core::reactor;
 use futures::prelude::*;
 use futures::future::{self, Either};
-use futures::sync::oneshot;
 
 fn main() {
     let logger = configure_slog();
@@ -79,47 +75,18 @@ fn run(logger: slog::Logger) -> Result<(), Error> {
         }
 
         let todoist_client = todoist_client.clone();
-        let result = handle_pr(handler.clone(), pull_request, record_logger).and_then(move |maybe_pr| match maybe_pr {
-            Some(pr) => Either::A(todoist_client.create_task_for_pr(&pr)),
+        let result = handler
+            .record_in_task(pull_request, record_logger)
+            .and_then(move |maybe_pr| match maybe_pr {
+                Some(pr) => Either::A(todoist_client.create_task_for_pr(&pr)),
 
-            None => Either::B(future::ok(())),
-        });
+                None => Either::B(future::ok(())),
+            });
 
         Either::B(result)
     });
 
     core.run(f)
-}
-
-fn handle_pr(
-    handler: ReviewHandler,
-    pr: PullRequest,
-    logger: slog::Logger,
-) -> impl Future<Item = Option<PullRequest>, Error = Error> {
-    let (sender, receiver) = oneshot::channel();
-
-    let future = handler.record_review_request(pr).then(move |maybe_result| {
-        match maybe_result {
-            Ok(Some(pr)) => {
-                info!(logger, "PR received"; "pull_request" => ?pr);
-                sender.send(Some(pr)).ok();
-            }
-
-            Err(err) => {
-                error!(logger, "Error while recording review request"; "err" => %err);
-                sender.send(None).ok();
-            }
-
-            _ => {
-                sender.send(None).ok();
-            }
-        };
-
-        Ok(())
-    });
-
-    tokio::spawn(future);
-    receiver.map_err(Error::from)
 }
 
 fn configure_slog() -> slog::Logger {
@@ -139,9 +106,12 @@ mod review_handler {
     use std::env;
     use futures::prelude::*;
     use futures::future::{self, poll_fn};
+    use futures::sync::oneshot;
 
     use tokio_threadpool::blocking;
+    use tokio;
     use super::schema::review_requests;
+    use slog::Logger;
 
     use notification::PullRequest;
     use std::sync::{Arc, Mutex};
@@ -161,6 +131,37 @@ mod review_handler {
     }
 
     impl ReviewHandler {
+        pub fn record_in_task(
+            &self,
+            pr: PullRequest,
+            logger: Logger,
+        ) -> impl Future<Item = Option<PullRequest>, Error = Error> {
+            let (sender, receiver) = oneshot::channel();
+
+            let future = self.record_review_request(pr).then(move |maybe_result| {
+                match maybe_result {
+                    Ok(Some(pr)) => {
+                        info!(logger, "PR received"; "pull_request" => ?pr);
+                        sender.send(Some(pr)).ok();
+                    }
+
+                    Err(err) => {
+                        error!(logger, "Error while recording review request"; "err" => %err);
+                        sender.send(None).ok();
+                    }
+
+                    _ => {
+                        sender.send(None).ok();
+                    }
+                };
+
+                Ok(())
+            });
+
+            tokio::spawn(future);
+            receiver.map_err(Error::from)
+        }
+
         pub fn record_review_request(&self, pr: PullRequest) -> impl Future<Item = Option<PullRequest>, Error = Error> {
             let new_request = NewReviewRequest {
                 project: pr.repo().to_string(),
