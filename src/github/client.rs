@@ -112,7 +112,7 @@ impl GithubClient {
     }
 
     fn current_notifications(&self) -> impl Stream<Item = NotificationsResponse, Error = Error> {
-        let url = Some("https://api.github.com/notifications".to_owned());
+        let url = Some("https://api.github.com/notifications?all=true".to_owned());
         let last_modified = self.notifications_last_modified.get();
         let logger = self.logger.clone();
         let client = self.http.clone();

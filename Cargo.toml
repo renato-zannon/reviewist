@@ -43,10 +43,3 @@ features = ["sqlite"]
 [dependencies.libsqlite3-sys]
 version = "*"
 features = ["bundled"]
-
-[replace]
-"tokio:0.1.5" = { git = "https://github.com/tokio-rs/tokio" }
-"tokio-executor:0.1.2" = { git = "https://github.com/tokio-rs/tokio" }
-"tokio-reactor:0.1.1" = { git = "https://github.com/tokio-rs/tokio" }
-"tokio-threadpool:0.1.2" = { git = "https://github.com/tokio-rs/tokio" }
-"tokio-timer:0.2.1" = { git = "https://github.com/tokio-rs/tokio" }
