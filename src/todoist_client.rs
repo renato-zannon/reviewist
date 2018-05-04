@@ -5,6 +5,7 @@ use reqwest::unstable::async::Client;
 use failure::Error;
 use futures::prelude::*;
 use slog::Logger;
+use url::Url;
 
 use github::PullRequest;
 use Config;
@@ -13,6 +14,7 @@ use Config;
 pub struct TodoistClient {
     http: Client,
     logger: Logger,
+    host: Url,
 }
 
 #[derive(Serialize)]
@@ -20,8 +22,6 @@ struct NewTask {
     content: String,
     due_string: String,
 }
-
-const NEW_TASK_URL: &'static str = "https://beta.todoist.com/API/v8/tasks";
 
 impl TodoistClient {
     pub fn new(config: &Config) -> Result<TodoistClient, Error> {
@@ -33,15 +33,17 @@ impl TodoistClient {
 
         Ok(TodoistClient {
             http: client,
+            host: config.todoist_base.clone(),
             logger: config.logger.clone(),
         })
     }
 
     pub fn create_task_for_pr(&self, pr: &PullRequest) -> impl Future<Item = (), Error = Error> {
         let new_task = NewTask::for_pull_request(pr);
+        let new_task_url = self.host.join("/API/v8/tasks").unwrap();
 
         self.http
-            .post(NEW_TASK_URL)
+            .post(new_task_url)
             .json(&new_task)
             .send()
             .map_err(Error::from)

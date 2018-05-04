@@ -10,6 +10,7 @@ use futures::prelude::*;
 use futures::{future, stream};
 use futures::future::Either;
 use slog::Logger;
+use url::Url;
 
 use github::notification::{PullRequest, ReviewRequest};
 use github::notifications_response::{self, NotificationsResponse};
@@ -23,6 +24,7 @@ pub struct GithubClient {
     last_poll_interval: Cell<Option<u64>>,
     notifications_last_modified: Cell<header::HttpDate>,
     logger: Logger,
+    host: Url,
 }
 
 pub fn new(config: &Config) -> Result<GithubClient, Error> {
@@ -40,6 +42,7 @@ pub fn new(config: &Config) -> Result<GithubClient, Error> {
         last_poll_interval: Cell::new(None),
         notifications_last_modified: Cell::new(base_time),
         logger: config.logger.clone(),
+        host: config.github_base.clone(),
     })
 }
 
@@ -113,7 +116,9 @@ impl GithubClient {
     }
 
     fn current_notifications(&self) -> impl Stream<Item = NotificationsResponse, Error = Error> {
-        let url = Some("https://api.github.com/notifications?all=true".to_owned());
+        let notifications_url = self.host.join("/notifications?all=true").unwrap();
+        let url = Some(notifications_url.into_string());
+
         let last_modified = self.notifications_last_modified.get();
         let logger = self.logger.clone();
         let client = self.http.clone();

@@ -18,6 +18,7 @@ extern crate tokio_core;
 extern crate tokio_retry;
 extern crate tokio_threadpool;
 extern crate tokio_timer;
+extern crate url;
 
 mod github;
 mod todoist_client;
@@ -28,6 +29,7 @@ use failure::Error;
 use futures::future::{self, Either};
 use futures::prelude::*;
 use tokio_core::reactor::Core as TokioCore;
+use url::Url;
 
 use github::GithubClient;
 use review_handler::ReviewHandler;
@@ -36,8 +38,8 @@ use todoist_client::TodoistClient;
 pub struct Config<'a> {
     pub logger: slog::Logger,
     pub core: &'a TokioCore,
-    pub todoist_host: &'a str,
-    pub github_host: &'a str,
+    pub todoist_base: Url,
+    pub github_base: Url,
 }
 
 impl<'a> Config<'a> {
@@ -45,8 +47,8 @@ impl<'a> Config<'a> {
         Config {
             logger,
             core,
-            todoist_host: "https://beta.todoist.com",
-            github_host: "https://api.github.com",
+            todoist_base: Url::parse("https://beta.todoist.com").unwrap(),
+            github_base: Url::parse("https://api.github.com").unwrap(),
         }
     }
 }
