@@ -36,11 +36,18 @@ use todoist_client::TodoistClient;
 pub struct Config<'a> {
     pub logger: slog::Logger,
     pub core: &'a TokioCore,
+    pub todoist_host: &'a str,
+    pub github_host: &'a str,
 }
 
 impl<'a> Config<'a> {
     pub fn defaults(logger: slog::Logger, core: &TokioCore) -> Config {
-        Config { logger, core }
+        Config {
+            logger,
+            core,
+            todoist_host: "https://beta.todoist.com",
+            github_host: "https://api.github.com",
+        }
     }
 }
 
@@ -54,15 +61,10 @@ pub fn run(config: Config) -> impl Future<Item = (), Error = Error> {
         )
     }
 
-    let Config { core, logger } = config;
-
     let main_future = build_main_future(State {
-        github_client: early_error!(github::new_client(&core.handle(), logger.clone())),
+        github_client: early_error!(github::new_client(&config)),
+        todoist_client: early_error!(TodoistClient::new(&config)),
         handler: early_error!(review_handler::new()),
-        todoist_client: early_error!(todoist_client::TodoistClient::new(
-            &core.handle(),
-            logger.clone()
-        )),
     });
 
     Either::B(main_future)

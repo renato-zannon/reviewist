@@ -5,7 +5,6 @@ use std::cell::Cell;
 use reqwest::header::{self, Authorization, Headers};
 use reqwest::unstable::async::Client;
 use failure::Error;
-use tokio_core::reactor::Handle;
 use tokio_timer::Delay;
 use futures::prelude::*;
 use futures::{future, stream};
@@ -16,6 +15,8 @@ use github::notification::{PullRequest, ReviewRequest};
 use github::notifications_response::{self, NotificationsResponse};
 use github::notifications_polling;
 
+use Config;
+
 #[derive(Clone)]
 pub struct GithubClient {
     http: Client,
@@ -24,12 +25,12 @@ pub struct GithubClient {
     logger: Logger,
 }
 
-pub fn new(handle: &Handle, logger: Logger) -> Result<GithubClient, Error> {
+pub fn new(config: &Config) -> Result<GithubClient, Error> {
     let github_token = env::var("GITHUB_TOKEN")?;
     let client = Client::builder()
         .default_headers(default_headers(github_token))
         .timeout(Duration::from_secs(30))
-        .build(handle)?;
+        .build(&config.core.handle())?;
 
     let base_time = SystemTime::now() - Duration::from_secs(60 * 60 * 24 * 7);
     let base_time = header::HttpDate::from(base_time);
@@ -38,7 +39,7 @@ pub fn new(handle: &Handle, logger: Logger) -> Result<GithubClient, Error> {
         http: client,
         last_poll_interval: Cell::new(None),
         notifications_last_modified: Cell::new(base_time),
-        logger,
+        logger: config.logger.clone(),
     })
 }
 

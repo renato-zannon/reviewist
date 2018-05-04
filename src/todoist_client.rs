@@ -3,11 +3,11 @@ use std::time::Duration;
 use reqwest::header::{Authorization, Headers};
 use reqwest::unstable::async::Client;
 use failure::Error;
-use tokio_core::reactor::Handle;
 use futures::prelude::*;
 use slog::Logger;
 
 use github::PullRequest;
+use Config;
 
 #[derive(Clone)]
 pub struct TodoistClient {
@@ -24,16 +24,16 @@ struct NewTask {
 const NEW_TASK_URL: &'static str = "https://beta.todoist.com/API/v8/tasks";
 
 impl TodoistClient {
-    pub fn new(handle: &Handle, logger: Logger) -> Result<TodoistClient, Error> {
+    pub fn new(config: &Config) -> Result<TodoistClient, Error> {
         let todoist_token = env::var("TODOIST_TOKEN")?;
         let client = Client::builder()
             .default_headers(default_headers(todoist_token))
             .timeout(Duration::from_secs(30))
-            .build(handle)?;
+            .build(&config.core.handle())?;
 
         Ok(TodoistClient {
             http: client,
-            logger,
+            logger: config.logger.clone(),
         })
     }
 
