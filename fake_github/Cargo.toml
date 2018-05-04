@@ -1,0 +1,10 @@
+[package]
+name = "fake_github"
+version = "0.1.0"
+authors = ["Renato Zannon <renato@rrsz.com.br>"]
+
+[dependencies]
+futures = "0.1"
+gotham = "0.2"
+hyper = "0.11"
+mime = "0.3"

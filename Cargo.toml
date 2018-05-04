@@ -43,3 +43,6 @@ features = ["sqlite"]
 [dependencies.libsqlite3-sys]
 version = "*"
 features = ["bundled"]
+
+[workspace]
+members = ["fake_github"]
