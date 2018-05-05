@@ -46,3 +46,7 @@ features = ["bundled"]
 
 [workspace]
 members = ["fake_github"]
+
+[dev-dependencies]
+ipc-channel = "0.10"
+fake_github = { path = "fake_github" }
