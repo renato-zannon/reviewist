@@ -1,5 +1,6 @@
 extern crate fake_github;
 extern crate ipc_channel;
+extern crate nix;
 extern crate reviewist;
 #[macro_use]
 extern crate slog;
@@ -26,7 +27,8 @@ fn test_smoke() {
         .expect("failed to start fake github");
     let mut core = Core::new().expect("failed to start tokio core");
 
-    env::set_var("DATABASE_URL", "db/reviewist_test.db");
+    let db_path = new_database();
+    env::set_var("DATABASE_URL", db_path.fd_path());
     env::set_var("TODOIST_TOKEN", "lol123");
     env::set_var("GITHUB_TOKEN", "lol123");
 
@@ -56,4 +58,40 @@ fn configure_slog() -> slog::Logger {
     let drain = slog_async::Async::new(drain).build().fuse();
 
     slog::Logger::root(drain, o!())
+}
+
+struct DatabasePath {
+    path: String,
+    fd: std::os::unix::io::RawFd,
+}
+
+impl DatabasePath {
+    fn fd_path(&self) -> String {
+        format!("/proc/self/fd/{}", self.fd)
+    }
+}
+
+impl Drop for DatabasePath {
+    fn drop(&mut self) {
+        nix::unistd::close(self.fd).unwrap();
+        nix::unistd::unlink(self.path.as_str()).unwrap();
+    }
+}
+
+fn new_database() -> DatabasePath {
+    use nix::unistd::mkstemp;
+
+    let (fd, path) = mkstemp("/tmp/reviewist_test.db.XXXXXX").unwrap();
+    let db_path = DatabasePath {
+        fd,
+        path: path.to_string_lossy().into_owned(),
+    };
+
+    Command::new("cargo")
+        .env("DATABASE_URL", db_path.fd_path())
+        .args(&["run", "--bin", "reviewist_migrate"])
+        .status()
+        .expect("failed to start fake github");
+
+    return db_path;
 }

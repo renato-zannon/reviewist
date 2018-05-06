@@ -3,7 +3,6 @@ use chrono::prelude::*;
 #[derive(Debug, Deserialize)]
 pub struct Notification {
     pub reason: String,
-    pub url: String,
     pub subject: Subject,
     pub repository: Repository,
 }
