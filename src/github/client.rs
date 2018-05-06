@@ -116,7 +116,7 @@ impl GithubClient {
     }
 
     fn current_notifications(&self) -> impl Stream<Item = NotificationsResponse, Error = Error> {
-        let notifications_url = self.host.join("/notifications?all=true").unwrap();
+        let notifications_url = self.host.join("notifications?all=true").unwrap();
         let url = Some(notifications_url.into_string());
 
         let last_modified = self.notifications_last_modified.get();

@@ -41,7 +41,7 @@ fn test_smoke() {
     let future = reviewist::run(Config {
         logger: configure_slog(),
         core: &core,
-        github_base: Url::parse(&format!("http://{}", address)).unwrap(),
+        github_base: Url::parse(&format!("http://{}/github/", address)).unwrap(),
         todoist_base: Url::parse("http://example.com").unwrap(),
     });
 

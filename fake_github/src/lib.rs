@@ -40,7 +40,7 @@ lazy_static! {
 header! { (XPollInterval, "X-Poll-Interval") => [u64] }
 
 fn notifications(state: State) -> (State, hyper::Response) {
-    let pr_url = format!("http://{}/pull_requests/1", &*ADDR);
+    let pr_url = format!("http://{}/github/pull_requests/1", &*ADDR);
 
     let response_json = json!([
         {
@@ -71,7 +71,7 @@ fn notifications(state: State) -> (State, hyper::Response) {
 
 fn get_pull_request(state: State) -> (State, hyper::Response) {
     let response_body = {
-        let PullRequestParams { ref id } = state.borrow();
+        let PullRequestParams { id, .. } = state.borrow();
 
         let response_json = json!({
             "number": id,
@@ -107,10 +107,10 @@ struct PullRequestParams {
 
 fn router() -> Router {
     build_simple_router(|route| {
-        route.get("/notifications").to(notifications);
+        route.get("/github/notifications").to(notifications);
 
         route
-            .get("/pull_requests/:id")
+            .get("/github/pull_requests/:id")
             .with_path_extractor::<PullRequestParams>()
             .to(get_pull_request);
     })
