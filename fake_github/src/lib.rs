@@ -117,11 +117,11 @@ fn router() -> Router {
 }
 
 pub fn run() {
-    let sender = build_sender();
-
-    sender
-        .send(Response::Booted { port: ADDR.clone() })
-        .unwrap();
+    if let Some(sender) = build_sender() {
+        sender
+            .send(Response::Booted { port: ADDR.clone() })
+            .unwrap();
+    }
 
     gotham::start(ADDR.clone(), router());
 }
@@ -132,9 +132,8 @@ fn get_open_port() -> SocketAddr {
     return addr;
 }
 
-fn build_sender() -> ipc::IpcSender<Response> {
-    let mut args: Vec<String> = env::args().skip(1).collect();
-    let server_path = args.pop().unwrap();
+fn build_sender() -> Option<ipc::IpcSender<Response>> {
+    let server_path: String = env::args().skip(1).next()?;
 
-    ipc::IpcSender::connect(server_path).unwrap()
+    ipc::IpcSender::connect(server_path).ok()
 }
