@@ -8,13 +8,11 @@ extern crate nix;
 extern crate reviewist;
 #[macro_use]
 extern crate slog;
-extern crate slog_async;
-extern crate slog_term;
 extern crate tokio_core;
 extern crate tokio_timer;
 extern crate url;
 
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tokio_core::reactor::Core;
 use tokio_timer::Delay;
@@ -57,6 +55,9 @@ fn with_fake_server<T>(f: impl FnOnce(FakeServer) -> T) -> T {
 
     let mut fake_github = Command::new("cargo")
         .args(&["run", "-p", "fake_github", "--", server_name.as_ref()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .expect("failed to start fake github");
 
@@ -90,13 +91,7 @@ where
 }
 
 fn configure_slog() -> slog::Logger {
-    use slog::Drain;
-
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-
-    slog::Logger::root(drain, o!())
+    slog::Logger::root(slog::Discard, o!())
 }
 
 struct DatabasePath {
@@ -129,6 +124,9 @@ fn new_database() -> DatabasePath {
     Command::new("cargo")
         .env("DATABASE_URL", db_path.fd_path())
         .args(&["run", "--bin", "reviewist_migrate"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()
         .expect("failed to start fake github");
 
