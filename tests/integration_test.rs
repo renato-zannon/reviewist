@@ -1,4 +1,8 @@
+#![type_length_limit = "2097152"]
+
+extern crate failure;
 extern crate fake_github;
+extern crate futures;
 extern crate ipc_channel;
 extern crate nix;
 extern crate reviewist;
@@ -7,10 +11,17 @@ extern crate slog;
 extern crate slog_async;
 extern crate slog_term;
 extern crate tokio_core;
+extern crate tokio_timer;
 extern crate url;
 
 use std::process::Command;
+use std::time::{Duration, Instant};
 use tokio_core::reactor::Core;
+use tokio_timer::Delay;
+use failure::Error;
+use futures::prelude::*;
+use futures::future::{self, Either};
+
 use reviewist::Config;
 use url::Url;
 use std::env;
@@ -28,8 +39,9 @@ fn test_smoke() {
             github_base: Url::parse(&format!("http://{}/github/", server.address)).unwrap(),
             todoist_base: Url::parse("http://example.com").unwrap(),
         });
+        let limited_future = time_limit(future, 2);
 
-        core.run(future)
+        core.run(limited_future)
     });
 
     result.unwrap();
@@ -62,6 +74,19 @@ fn with_fake_server<T>(f: impl FnOnce(FakeServer) -> T) -> T {
     fake_github.kill().unwrap();
 
     result
+}
+
+fn time_limit<F>(future: F, seconds: u64) -> impl Future<Item = (), Error = Error>
+where
+    F: Future<Error = Error>,
+{
+    let delay = Delay::new(Instant::now() + Duration::from_secs(seconds));
+
+    future.select2(delay).then(|result| match result {
+        Ok(_) => future::ok(()),
+        Err(Either::B(_)) => future::ok(()),
+        Err(Either::A((err, _))) => future::err(err),
+    })
 }
 
 fn configure_slog() -> slog::Logger {
