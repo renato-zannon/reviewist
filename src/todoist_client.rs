@@ -1,14 +1,15 @@
-use std::env;
-use std::time::Duration;
+use failure::Error;
+use futures::future;
+use futures::prelude::*;
 use reqwest::header::{Authorization, Headers};
 use reqwest::unstable::async::Client;
-use failure::Error;
-use futures::prelude::*;
 use slog::Logger;
+use std::env;
+use std::time::Duration;
 use url::Url;
 
-use github::PullRequest;
 use Config;
+use github::PullRequest;
 
 #[derive(Clone)]
 pub struct TodoistClient {
@@ -41,13 +42,28 @@ impl TodoistClient {
     pub fn create_task_for_pr(&self, pr: &PullRequest) -> impl Future<Item = (), Error = Error> {
         let new_task = NewTask::for_pull_request(pr);
         let new_task_url = self.host.join("/API/v8/tasks").unwrap();
+        let logger = self.logger.clone();
 
-        self.http
-            .post(new_task_url)
-            .json(&new_task)
-            .send()
-            .map_err(Error::from)
-            .map(|_| ())
+        let request = self.http.post(new_task_url).json(&new_task).send();
+        request.then(move |response| match response {
+            Ok(ok_response) => {
+                if ok_response.status().is_success() {
+                    return future::ok(());
+                }
+
+                error!(logger, "Error while creating todoist task"; "response" => ?ok_response);
+                return future::err(format_err!(
+                    "Error while creating todoist task. response: {:?}",
+                    ok_response
+                ));
+            }
+
+            Err(err) => {
+                let err = Error::from(err);
+                error!(logger, "Error while creating todoist task"; "error" => %err);
+                return future::err(err);
+            }
+        })
     }
 }
 
