@@ -35,7 +35,7 @@ fn test_smoke() {
             logger: configure_slog(),
             core: &core,
             github_base: Url::parse(&format!("http://{}/github/", server.address)).unwrap(),
-            todoist_base: Url::parse("http://example.com").unwrap(),
+            todoist_base: Url::parse(&format!("http://{}/todoist/", server.address)).unwrap(),
         });
         let limited_future = time_limit(future, 2);
 
