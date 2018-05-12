@@ -1,20 +1,20 @@
+use std::cell::Cell;
 use std::env;
 use std::time::{Duration, Instant, SystemTime};
-use std::cell::Cell;
 
-use reqwest::header::{self, Authorization, Headers};
-use reqwest::unstable::async::Client;
 use failure::Error;
-use tokio_timer::Delay;
+use futures::future::Either;
 use futures::prelude::*;
 use futures::{future, stream};
-use futures::future::Either;
+use reqwest::header::{self, Authorization, Headers};
+use reqwest::unstable::async::Client;
 use slog::Logger;
+use tokio_timer::Delay;
 use url::Url;
 
 use github::notification::{PullRequest, ReviewRequest};
-use github::notifications_response::{self, NotificationsResponse};
 use github::notifications_polling;
+use github::notifications_response::{self, NotificationsResponse};
 
 use Config;
 
@@ -68,10 +68,7 @@ impl GithubClient {
                 let response = match maybe_page {
                     Some(page) => page,
                     None => {
-                        error!(
-                            logger,
-                            "Response didn't have first page - unable to get metadata"
-                        );
+                        error!(logger, "Response didn't have first page - unable to get metadata");
                         return future::err(format_err!("Response has 0 pages"));
                     }
                 };
@@ -106,11 +103,9 @@ impl GithubClient {
 
         debug!(logger, "Start polling wait interval"; "length" => interval);
         let interval_end = Instant::now() + Duration::from_secs(interval);
-        let delay = Delay::new(interval_end)
-            .map_err(Error::from)
-            .inspect(move |_| {
-                debug!(logger, "Finished polling wait interval"; "length" => interval);
-            });
+        let delay = Delay::new(interval_end).map_err(Error::from).inspect(move |_| {
+            debug!(logger, "Finished polling wait interval"; "length" => interval);
+        });
 
         Either::B(delay)
     }

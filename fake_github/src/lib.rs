@@ -13,17 +13,17 @@ extern crate serde_derive;
 #[macro_use]
 extern crate serde_json;
 
-use std::env;
 use hyper::StatusCode;
 use hyper::Uri;
+use std::env;
 use std::net::SocketAddr;
 
 use ipc_channel::ipc;
 
 use gotham::http::response::create_response;
-use gotham::state::State;
 use gotham::router::Router;
 use gotham::router::builder::*;
+use gotham::state::State;
 
 pub enum Message {
 }
@@ -58,11 +58,7 @@ fn notifications(state: State) -> (State, hyper::Response) {
     ]);
     let response_body = serde_json::to_vec(&response_json).unwrap();
 
-    let mut res = create_response(
-        &state,
-        StatusCode::Ok,
-        Some((response_body, mime::APPLICATION_JSON)),
-    );
+    let mut res = create_response(&state, StatusCode::Ok, Some((response_body, mime::APPLICATION_JSON)));
 
     res.headers_mut().set(XPollInterval(1));
 
@@ -91,11 +87,7 @@ fn get_pull_request(state: State) -> (State, hyper::Response) {
         serde_json::to_vec(&response_json).unwrap()
     };
 
-    let res = create_response(
-        &state,
-        StatusCode::Ok,
-        Some((response_body, mime::APPLICATION_JSON)),
-    );
+    let res = create_response(&state, StatusCode::Ok, Some((response_body, mime::APPLICATION_JSON)));
 
     (state, res)
 }
@@ -118,9 +110,7 @@ fn router() -> Router {
 
 pub fn run() {
     if let Some(sender) = build_sender() {
-        sender
-            .send(Response::Booted { port: ADDR.clone() })
-            .unwrap();
+        sender.send(Response::Booted { port: ADDR.clone() }).unwrap();
     }
 
     gotham::start(ADDR.clone(), router());

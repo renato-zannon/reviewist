@@ -1,10 +1,10 @@
+use failure::Error;
 use futures::prelude::*;
 use futures::stream;
-use failure::Error;
-use tokio_retry::{self, Retry, strategy::ExponentialBackoff};
 use slog::Logger;
-use std::rc::Rc;
 use std::cell::Cell;
+use std::rc::Rc;
+use tokio_retry::{self, Retry, strategy::ExponentialBackoff};
 
 use github::{GithubClient, PullRequest};
 

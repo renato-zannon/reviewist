@@ -1,10 +1,10 @@
-use reqwest::unstable::async::Response;
-use reqwest::StatusCode;
-use serde_json::{self, Value};
 use failure::Error;
-use futures::prelude::*;
-use reqwest::header;
 use futures::future::{self, Either};
+use futures::prelude::*;
+use reqwest::StatusCode;
+use reqwest::header;
+use reqwest::unstable::async::Response;
+use serde_json::{self, Value};
 use slog::Logger;
 
 use github::notification::Notification;
@@ -26,10 +26,7 @@ pub fn from_http(response: Response, logger: Logger) -> impl Future<Item = Notif
             Either::B(future::ok(not_modified_response(response)))
         }
 
-        _ => Either::B(future::err(format_err!(
-            "Unrecognized response: {:?}",
-            response
-        ))),
+        _ => Either::B(future::err(format_err!("Unrecognized response: {:?}", response))),
     }
 }
 
@@ -75,18 +72,11 @@ fn not_modified_response(response: Response) -> NotificationsResponse {
 }
 
 fn parse_poll_interval(response: &Response) -> Option<u64> {
-    response
-        .headers()
-        .get::<XPollInterval>()
-        .cloned()
-        .map(|int| int.0)
+    response.headers().get::<XPollInterval>().cloned().map(|int| int.0)
 }
 
 fn parse_last_modified(response: &Response) -> Option<header::HttpDate> {
-    response
-        .headers()
-        .get::<header::LastModified>()
-        .map(|header| header.0)
+    response.headers().get::<header::LastModified>().map(|header| header.0)
 }
 
 fn next_page_url(response: &Response) -> Option<String> {

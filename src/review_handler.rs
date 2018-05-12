@@ -1,15 +1,15 @@
-use failure::Error;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
-use std::env;
-use futures::prelude::*;
+use failure::Error;
 use futures::future::{self, poll_fn};
+use futures::prelude::*;
 use futures::sync::oneshot;
+use std::env;
 
-use tokio_threadpool::blocking;
-use tokio;
 use super::schema::review_requests;
 use slog::Logger;
+use tokio;
+use tokio_threadpool::blocking;
 
 use github::PullRequest;
 use std::sync::{Arc, Mutex};
@@ -91,9 +91,9 @@ pub fn new() -> Result<ReviewHandler, Error> {
 }
 
 fn insert_review_request(new_request: &NewReviewRequest, conn: &SqliteConnection) -> Result<bool, Error> {
-    use diesel::{insert_into, select};
-    use diesel::dsl::exists;
     use super::schema::review_requests::dsl::*;
+    use diesel::dsl::exists;
+    use diesel::{insert_into, select};
 
     let existing_rq = review_requests.filter(
         project
@@ -101,9 +101,7 @@ fn insert_review_request(new_request: &NewReviewRequest, conn: &SqliteConnection
             .and(pr_number.eq(&new_request.pr_number)),
     );
 
-    let rq_exists = select(exists(existing_rq))
-        .get_result(conn)
-        .map_err(Error::from)?;
+    let rq_exists = select(exists(existing_rq)).get_result(conn).map_err(Error::from)?;
 
     if rq_exists {
         return Ok(false);

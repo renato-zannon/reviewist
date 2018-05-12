@@ -5,9 +5,9 @@ extern crate dotenv;
 #[macro_use]
 extern crate failure;
 
-use dotenv::dotenv;
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
+use dotenv::dotenv;
 use failure::Error;
 use std::env;
 

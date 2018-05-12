@@ -12,8 +12,8 @@ extern crate tokio_core;
 
 use dotenv::dotenv;
 use failure::Error;
-use tokio_core::reactor::Core as TokioCore;
 use slog::Drain;
+use tokio_core::reactor::Core as TokioCore;
 
 use reviewist::Config;
 

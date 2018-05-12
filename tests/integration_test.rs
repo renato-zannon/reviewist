@@ -12,19 +12,19 @@ extern crate tokio_core;
 extern crate tokio_timer;
 extern crate url;
 
+use failure::Error;
+use futures::future::{self, Either};
+use futures::prelude::*;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tokio_core::reactor::Core;
 use tokio_timer::Delay;
-use failure::Error;
-use futures::prelude::*;
-use futures::future::{self, Either};
 
-use reviewist::Config;
-use url::Url;
-use std::env;
-use ipc_channel::ipc;
 use fake_github::{Message, Response};
+use ipc_channel::ipc;
+use reviewist::Config;
+use std::env;
+use url::Url;
 
 #[test]
 fn test_smoke() {

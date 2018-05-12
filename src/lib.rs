@@ -21,9 +21,9 @@ extern crate tokio_timer;
 extern crate url;
 
 mod github;
-mod todoist_client;
 mod review_handler;
 mod schema;
+mod todoist_client;
 
 use failure::Error;
 use futures::future::{self, Either};
@@ -55,12 +55,12 @@ impl<'a> Config<'a> {
 
 pub fn run(config: Config) -> impl Future<Item = (), Error = Error> {
     macro_rules! early_error {
-        ($e:expr) => (
+        ($e:expr) => {
             match $e {
                 Ok(res) => res,
-                Err(err) => return Either::A(future::err(Error::from(err)))
+                Err(err) => return Either::A(future::err(Error::from(err))),
             }
-        )
+        };
     }
 
     let main_future = build_main_future(State {
