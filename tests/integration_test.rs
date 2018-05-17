@@ -27,26 +27,69 @@ use std::env;
 use url::Url;
 
 #[test]
-fn test_smoke() {
+fn test_one_pr() {
     let result = with_fake_server(|server| {
         let mut core = Core::new().expect("failed to start tokio core");
 
-        let future = reviewist::run(Config {
-            logger: configure_slog(),
-            core: &core,
-            github_base: Url::parse(&format!("http://{}/github/", server.address)).unwrap(),
-            todoist_base: Url::parse(&format!("http://{}/todoist/", server.address)).unwrap(),
-        });
-        let limited_future = time_limit(future, 2);
+        server.sender.send(Message::AddReviewRequest).ok();
 
-        core.run(limited_future)
+        let future = build_main_future(&core, &server);
+        let limited_future = time_limit(future, 1);
+
+        core.run(limited_future).map(move |_| {
+            server.sender.send(Message::GetTaskCount).ok();
+
+            match server.receiver.recv() {
+                Ok(Response::TaskCountResponse(count)) => count,
+                response => panic!("Unexpected response: {:?}", response),
+            }
+        })
     });
 
-    result.unwrap();
+    let task_count = result.unwrap();
+    assert_eq!(task_count, 1);
+}
+
+#[test]
+fn test_multiple_prs() {
+    const PR_COUNT: usize = 10;
+
+    let result = with_fake_server(|server| {
+        let mut core = Core::new().expect("failed to start tokio core");
+
+        for _ in 0..PR_COUNT {
+            server.sender.send(Message::AddReviewRequest).ok();
+        }
+
+        let future = build_main_future(&core, &server);
+        let limited_future = time_limit(future, 1);
+
+        core.run(limited_future).map(move |_| {
+            server.sender.send(Message::GetTaskCount).ok();
+
+            match server.receiver.recv() {
+                Ok(Response::TaskCountResponse(count)) => count,
+                response => panic!("Unexpected response: {:?}", response),
+            }
+        })
+    });
+
+    let task_count = result.unwrap();
+    assert_eq!(task_count, PR_COUNT);
+}
+
+fn build_main_future(core: &Core, server: &FakeServer) -> impl Future<Item = (), Error = Error> {
+    reviewist::run(Config {
+        logger: configure_slog(),
+        core: &core,
+        github_base: Url::parse(&format!("http://{}/github/", server.address)).unwrap(),
+        todoist_base: Url::parse(&format!("http://{}/todoist/", server.address)).unwrap(),
+    })
 }
 
 struct FakeServer {
     receiver: ipc::IpcReceiver<Response>,
+    sender: ipc::IpcSender<Message>,
     address: std::net::SocketAddr,
 }
 
@@ -67,11 +110,16 @@ fn with_fake_server<T>(f: impl FnOnce(FakeServer) -> T) -> T {
     env::set_var("GITHUB_TOKEN", "lol123");
 
     let (receiver, message) = server.accept().unwrap();
-    let address = match message {
-        Response::Booted { port } => port,
+    let (address, sender) = match message {
+        Response::Booted { port, sender } => (port, sender),
+        msg => panic!("Unexpected message: {:?}", msg),
     };
 
-    let result = f(FakeServer { receiver, address });
+    let result = f(FakeServer {
+        receiver,
+        address,
+        sender,
+    });
     fake_github.kill().unwrap();
 
     result

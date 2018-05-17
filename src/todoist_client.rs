@@ -41,7 +41,7 @@ impl TodoistClient {
 
     pub fn create_task_for_pr(&self, pr: &PullRequest) -> impl Future<Item = (), Error = Error> {
         let new_task = NewTask::for_pull_request(pr);
-        let new_task_url = self.host.join("/API/v8/tasks").unwrap();
+        let new_task_url = self.host.join("API/v8/tasks").unwrap();
         let logger = self.logger.clone();
 
         let request = self.http.post(new_task_url).json(&new_task).send();
