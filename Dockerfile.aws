@@ -1,0 +1,7 @@
+FROM vault:latest as vault
+
+FROM reviewist
+COPY --from=vault /bin/vault /usr/local/bin/vault
+COPY scripts/aws-start.sh /usr/local/bin/aws-start.sh
+
+CMD ["/usr/local/bin/aws-start.sh"]
