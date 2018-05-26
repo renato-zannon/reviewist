@@ -1,10 +1,11 @@
-FROM ekidd/rust-musl-builder:beta as builder
+FROM ekidd/rust-musl-builder:1.26.0 as builder
 
 WORKDIR /home/rust
 ENV USER=rust
 
-RUN cargo new --bin app
+RUN cargo new --bin app && cd app && cargo new --bin fake_github
 COPY Cargo.toml Cargo.lock /home/rust/app/
+COPY fake_github/Cargo.toml /home/rust/app/fake_github/
 WORKDIR /home/rust/app
 
 RUN cargo build --release
