@@ -28,6 +28,7 @@ mod todoist_client;
 use failure::Error;
 use futures::future::{self, Either};
 use futures::prelude::*;
+use std::env;
 use tokio_core::reactor::Core as TokioCore;
 use url::Url;
 
@@ -40,6 +41,7 @@ pub struct Config<'a> {
     pub core: &'a TokioCore,
     pub todoist_base: Url,
     pub github_base: Url,
+    pub database_url: String,
 }
 
 impl<'a> Config<'a> {
@@ -49,6 +51,7 @@ impl<'a> Config<'a> {
             core,
             todoist_base: Url::parse("https://beta.todoist.com").unwrap(),
             github_base: Url::parse("https://api.github.com").unwrap(),
+            database_url: env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
         }
     }
 }

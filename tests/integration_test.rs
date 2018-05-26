@@ -28,12 +28,12 @@ use url::Url;
 
 #[test]
 fn test_one_pr() {
-    let result = with_fake_server(|server| {
+    let result = with_fake_server(|server, db| {
         let mut core = Core::new().expect("failed to start tokio core");
 
         server.sender.send(Message::AddReviewRequest).ok();
 
-        let future = build_main_future(&core, &server);
+        let future = build_main_future(&core, &server, &db);
         let limited_future = time_limit(future, 1);
 
         core.run(limited_future).map(move |_| {
@@ -54,14 +54,14 @@ fn test_one_pr() {
 fn test_multiple_prs() {
     const PR_COUNT: usize = 10;
 
-    let result = with_fake_server(|server| {
+    let result = with_fake_server(|server, db| {
         let mut core = Core::new().expect("failed to start tokio core");
 
         for _ in 0..PR_COUNT {
             server.sender.send(Message::AddReviewRequest).ok();
         }
 
-        let future = build_main_future(&core, &server);
+        let future = build_main_future(&core, &server, &db);
         let limited_future = time_limit(future, 1);
 
         core.run(limited_future).map(move |_| {
@@ -78,12 +78,13 @@ fn test_multiple_prs() {
     assert_eq!(task_count, PR_COUNT);
 }
 
-fn build_main_future(core: &Core, server: &FakeServer) -> impl Future<Item = (), Error = Error> {
+fn build_main_future(core: &Core, server: &FakeServer, db: &DatabasePath) -> impl Future<Item = (), Error = Error> {
     reviewist::run(Config {
         logger: configure_slog(),
         core: &core,
         github_base: Url::parse(&format!("http://{}/github/", server.address)).unwrap(),
         todoist_base: Url::parse(&format!("http://{}/todoist/", server.address)).unwrap(),
+        database_url: db.fd_path(),
     })
 }
 
@@ -93,11 +94,11 @@ struct FakeServer {
     address: std::net::SocketAddr,
 }
 
-fn with_fake_server<T>(f: impl FnOnce(FakeServer) -> T) -> T {
+fn with_fake_server<T>(f: impl FnOnce(FakeServer, DatabasePath) -> T) -> T {
     let (server, server_name) = ipc::IpcOneShotServer::<Response>::new().unwrap();
 
     let mut fake_github = Command::new("cargo")
-        .args(&["run", "-p", "fake_github", "--", server_name.as_ref()])
+        .args(&["run", "--release", "-p", "fake_github", "--", server_name.as_ref()])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -105,7 +106,6 @@ fn with_fake_server<T>(f: impl FnOnce(FakeServer) -> T) -> T {
         .expect("failed to start fake github");
 
     let db_path = new_database();
-    env::set_var("DATABASE_URL", db_path.fd_path());
     env::set_var("TODOIST_TOKEN", "lol123");
     env::set_var("GITHUB_TOKEN", "lol123");
 
@@ -115,11 +115,14 @@ fn with_fake_server<T>(f: impl FnOnce(FakeServer) -> T) -> T {
         msg => panic!("Unexpected message: {:?}", msg),
     };
 
-    let result = f(FakeServer {
-        receiver,
-        address,
-        sender,
-    });
+    let result = f(
+        FakeServer {
+            receiver,
+            address,
+            sender,
+        },
+        db_path,
+    );
     fake_github.kill().unwrap();
 
     result
@@ -171,7 +174,7 @@ fn new_database() -> DatabasePath {
 
     Command::new("cargo")
         .env("DATABASE_URL", db_path.fd_path())
-        .args(&["run", "--bin", "reviewist_migrate"])
+        .args(&["run", "--release", "--bin", "reviewist_migrate"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

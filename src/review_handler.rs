@@ -4,7 +4,6 @@ use failure::Error;
 use futures::future::{self, poll_fn};
 use futures::prelude::*;
 use futures::sync::oneshot;
-use std::env;
 
 use super::schema::review_requests;
 use slog::Logger;
@@ -115,9 +114,7 @@ fn insert_review_request(new_request: &NewReviewRequest, conn: &SqliteConnection
         .map_err(Error::from)
 }
 
-fn establish_connection(_config: &Config) -> Result<SqliteConnection, Error> {
-    let database_url = env::var("DATABASE_URL").map_err(|_| format_err!("DATABASE_URL must be set"))?;
-
-    SqliteConnection::establish(&database_url)
-        .map_err(move |err| format_err!("Error while connecting to {}: {}", database_url, err))
+fn establish_connection(config: &Config) -> Result<SqliteConnection, Error> {
+    SqliteConnection::establish(&config.database_url)
+        .map_err(move |err| format_err!("Error while connecting to {}: {}", config.database_url, err))
 }
