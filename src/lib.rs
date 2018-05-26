@@ -66,7 +66,7 @@ pub fn run(config: Config) -> impl Future<Item = (), Error = Error> {
     let main_future = build_main_future(State {
         github_client: early_error!(github::new_client(&config)),
         todoist_client: early_error!(TodoistClient::new(&config)),
-        handler: early_error!(review_handler::new()),
+        handler: early_error!(review_handler::new(&config)),
     });
 
     Either::B(main_future)

@@ -11,6 +11,7 @@ use slog::Logger;
 use tokio;
 use tokio_threadpool::blocking;
 
+use super::Config;
 use github::PullRequest;
 use std::sync::{Arc, Mutex};
 
@@ -83,8 +84,8 @@ impl ReviewHandler {
     }
 }
 
-pub fn new() -> Result<ReviewHandler, Error> {
-    let connection = establish_connection()?;
+pub fn new(config: &Config) -> Result<ReviewHandler, Error> {
+    let connection = establish_connection(config)?;
     Ok(ReviewHandler {
         connection: Arc::new(Mutex::new(connection)),
     })
@@ -114,7 +115,7 @@ fn insert_review_request(new_request: &NewReviewRequest, conn: &SqliteConnection
         .map_err(Error::from)
 }
 
-fn establish_connection() -> Result<SqliteConnection, Error> {
+fn establish_connection(_config: &Config) -> Result<SqliteConnection, Error> {
     let database_url = env::var("DATABASE_URL").map_err(|_| format_err!("DATABASE_URL must be set"))?;
 
     SqliteConnection::establish(&database_url)
